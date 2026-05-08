@@ -361,16 +361,14 @@ export default function App() {
         doc.text(noteLines, 14, finalY + 6)
       }
 
-      // 使用blob方式确保手机下载
-      const pdfBlob = doc.output('blob')
-      const url = URL.createObjectURL(pdfBlob)
+      // 使用data URL方式确保手机下载
+      const pdfDataUrl = doc.output('dataurlstring')
       const link = document.createElement('a')
-      link.href = url
+      link.href = pdfDataUrl
       link.download = `昕昕分镜_${result.destination}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-      URL.revokeObjectURL(url)
     } catch (err) {
       console.error('PDF生成失败:', err)
     } finally {
