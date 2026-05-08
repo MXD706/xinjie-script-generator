@@ -290,6 +290,13 @@ export default function App() {
     try {
       const element = resultRef.current
       element.classList.add('pdf-export')
+      // 等待样式应用并确保元素可见
+      await new Promise(resolve => setTimeout(resolve, 200))
+
+      // 调试：检查元素尺寸
+      console.log('element rect:', element.getBoundingClientRect())
+      console.log('element size:', element.offsetWidth, element.offsetHeight)
+
       const opt = {
         margin: [10, 10, 10, 10] as [number, number, number, number],
         filename: `昕昕分镜_${result.destination}_${Date.now()}.pdf`,
