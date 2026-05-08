@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import './App.css'
+import html2pdf from 'html2pdf.js'
 
 const DEEPSEEK_KEY_STORAGE = 'xinjie_deepseek_key'
 const HISTORY_STORAGE = 'xinjie_script_history'
@@ -129,6 +130,8 @@ export default function App() {
   const [editValue, setEditValue] = useState('')
   const [rawText, setRawText] = useState('')
   const [formOpen, setFormOpen] = useState(true)
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const resultRef = useRef<HTMLDivElement>(null)
 
   // Form state
   const [destination, setDestination] = useState('')
@@ -221,7 +224,7 @@ export default function App() {
 严格按照上述信息来写，不要自己瞎编乱造。`
 
     try {
-      const res = await fetch('https://www.cohorsai.fun/v1/chat/completions', {
+      const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -279,6 +282,29 @@ export default function App() {
     const newHistory = history.map(s => s.id === updated.id ? updated : s)
     saveHistory(newHistory)
     setHistory(newHistory)
+  }
+
+  const downloadPDF = async () => {
+    if (!resultRef.current || !result) return
+    setPdfLoading(true)
+    try {
+      const element = resultRef.current
+      element.classList.add('pdf-export')
+      const opt = {
+        margin: [10, 10, 10, 10] as [number, number, number, number],
+        filename: `昕昕分镜_${result.destination}_${Date.now()}.pdf`,
+        image: { type: 'jpeg' as const, quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+      }
+      await html2pdf().set(opt).from(element).save()
+      element.classList.remove('pdf-export')
+    } catch (err) {
+      console.error('PDF生成失败:', err)
+      resultRef.current?.classList.remove('pdf-export')
+    } finally {
+      setPdfLoading(false)
+    }
   }
 
   const copyAll = () => {
@@ -490,7 +516,7 @@ export default function App() {
 
         {/* Result */}
         {result && (
-          <div className="result-card">
+          <div className="result-card" ref={resultRef}>
             <div className="result-header">
               <div className="result-header-left">
                 <button className="back-btn" onClick={() => { setResult(null); setRawText('') }}>← 返回</button>
@@ -498,7 +524,7 @@ export default function App() {
               </div>
               <div className="result-actions">
                 <button className="copy-btn" onClick={copyAll}>{copied ? '✅ 已复制' : '📋 复制全部'}</button>
-                <button className="pdf-btn" onClick={() => window.print()}>📄 下载PDF</button>
+                <button className="pdf-btn" onClick={downloadPDF} disabled={pdfLoading}>{pdfLoading ? '⏳ 生成中...' : '📄 下载PDF'}</button>
                 <button className="delete-btn" onClick={() => {
                   const newHistory = history.filter(s => s.id !== result.id)
                   setHistory(newHistory); saveHistory(newHistory); setResult(null); setRawText('')
