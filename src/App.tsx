@@ -289,25 +289,25 @@ export default function App() {
     setPdfLoading(true)
 
     try {
-      // 创建临时克隆用于PDF生成
+      // 创建临时可见克隆用于PDF生成
       const clone = resultRef.current.cloneNode(true) as HTMLElement
-      clone.setAttribute('style', 'position:fixed;left:-9999px;top:-9999px;background:#ffffff;color:#1a1a1a;padding:20px;width:800px;')
+      clone.setAttribute('style', 'position:absolute;left:0;top:0;background:#ffffff;color:#1a1a1a;padding:20px;width:794px;z-index:-1;')
       document.body.appendChild(clone)
 
       // 确保克隆内的所有元素也是白底黑字
       clone.querySelectorAll('*').forEach(el => {
-        (el as HTMLElement).style.background = '#ffffff'
+        ;(el as HTMLElement).style.background = '#ffffff'
         ;(el as HTMLElement).style.color = '#1a1a1a'
       })
 
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise(resolve => setTimeout(resolve, 200))
 
       const opt = {
-        margin: [10, 10, 10, 10] as [number, number, number, number],
+        margin: 0,
         filename: `昕昕分镜_${result.destination}_${Date.now()}.pdf`,
         image: { type: 'jpeg' as const, quality: 1 },
-        html2canvas: { scale: 3, useCORS: true, backgroundColor: '#ffffff' },
-        jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: { unit: 'px' as const, format: 'a4' as const, orientation: 'portrait' as const }
       }
       await html2pdf().set(opt).from(clone).save()
 
