@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import './App.css'
-import html2pdf from 'html2pdf.js'
+import { jsPDF } from 'jspdf'
+import 'jspdf-autotable'
 
 const DEEPSEEK_KEY_STORAGE = 'xinjie_deepseek_key'
 const HISTORY_STORAGE = 'xinjie_script_history'
@@ -289,29 +290,78 @@ export default function App() {
     setPdfLoading(true)
 
     try {
-      // 创建临时可见克隆用于PDF生成
-      const clone = resultRef.current.cloneNode(true) as HTMLElement
-      clone.setAttribute('style', 'position:absolute;left:0;top:0;background:#ffffff;color:#1a1a1a;padding:20px;width:794px;z-index:-1;')
-      document.body.appendChild(clone)
+      const doc = new jsPDF()
+      const pageWidth = doc.internal.pageSize.getWidth()
+      let yPos = 15
 
-      // 确保克隆内的所有元素也是白底黑字
-      clone.querySelectorAll('*').forEach(el => {
-        ;(el as HTMLElement).style.background = '#ffffff'
-        ;(el as HTMLElement).style.color = '#1a1a1a'
+      // 标题
+      doc.setFontSize(16)
+      doc.setTextColor(30, 30, 30)
+      doc.text(`${result.destination} — ${result.purpose}`, pageWidth / 2, yPos, { align: 'center' })
+      yPos += 12
+
+      // 信息摘要
+      doc.setFontSize(10)
+      doc.setTextColor(80, 80, 80)
+      const infoItems = [result.destination, result.purpose, result.hotelName, result.shootTime].filter(Boolean)
+      doc.text(infoItems.join(' | '), pageWidth / 2, yPos, { align: 'center' })
+      yPos += 10
+
+      // 元信息
+      doc.setFontSize(11)
+      doc.setTextColor(60, 60, 60)
+      doc.text(`总时长: ${result.totalDuration}  |  背景音乐: ${result.bgm}  |  拍摄地点: ${result.shootLocation}`, 14, yPos)
+      yPos += 12
+
+      // 分隔线
+      doc.setDrawColor(200, 200, 200)
+      doc.line(14, yPos, pageWidth - 14, yPos)
+      yPos += 8
+
+      // 表格数据
+      const tableData = result.shots.map((shot, i) => [
+        String(i + 1),
+        shot.duration,
+        shot.timeRange,
+        shot.visual,
+        shot.voiceover,
+        shot.subtitle,
+        shot.directorNote
+      ])
+
+      // @ts-ignore - autotable types
+      doc.autoTable({
+        startY: yPos,
+        head: [['#', '时长', '时间段', '画面内容', '口播台词', '字幕', '摄影师指令']],
+        body: tableData,
+        styles: { fontSize: 8, cellPadding: 3 },
+        headStyles: { fillColor: [240, 240, 240], textColor: [30, 30, 30], fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 10 },
+          1: { cellWidth: 15 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 35 },
+          4: { cellWidth: 35 },
+          5: { cellWidth: 20 },
+          6: { cellWidth: 35 }
+        },
+        alternateRowStyles: { fillColor: [250, 250, 250] },
+        margin: { left: 14, right: 14 }
       })
 
-      await new Promise(resolve => setTimeout(resolve, 200))
-
-      const opt = {
-        margin: 0,
-        filename: `昕昕分镜_${result.destination}_${Date.now()}.pdf`,
-        image: { type: 'jpeg' as const, quality: 1 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-        jsPDF: { unit: 'px' as const, format: 'a4' as const, orientation: 'portrait' as const }
+      // 导演注意事项
+      const finalY = (doc as any).lastAutoTable.finalY + 10
+      if (result.directorNotes) {
+        doc.setFontSize(12)
+        doc.setTextColor(30, 30, 30)
+        doc.text('导演注意事项', 14, finalY)
+        doc.setFontSize(10)
+        doc.setTextColor(60, 60, 60)
+        const noteLines = doc.splitTextToSize(result.directorNotes, pageWidth - 28)
+        doc.text(noteLines, 14, finalY + 6)
       }
-      await html2pdf().set(opt).from(clone).save()
 
-      document.body.removeChild(clone)
+      doc.save(`昕昕分镜_${result.destination}.pdf`)
     } catch (err) {
       console.error('PDF生成失败:', err)
     } finally {
