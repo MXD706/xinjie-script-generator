@@ -221,7 +221,7 @@ export default function App() {
 严格按照上述信息来写，不要自己瞎编乱造。`
 
     try {
-      const res = await fetch('https://api.deepseek.com/chat/completions', {
+      const res = await fetch('https://www.cohorsai.fun/v1/chat/completions', {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
