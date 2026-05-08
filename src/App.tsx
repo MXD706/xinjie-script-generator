@@ -288,15 +288,17 @@ export default function App() {
     if (!resultRef.current || !result) return
     setPdfLoading(true)
 
-    // 保存原始样式
-    const element = resultRef.current
-    const originalBg = element.style.background
-    const originalColor = element.style.color
-
     try {
-      // 强制设置白底黑字
-      element.style.background = '#ffffff'
-      element.style.color = '#1a1a1a'
+      // 创建临时克隆用于PDF生成
+      const clone = resultRef.current.cloneNode(true) as HTMLElement
+      clone.setAttribute('style', 'position:fixed;left:-9999px;top:-9999px;background:#ffffff;color:#1a1a1a;padding:20px;width:800px;')
+      document.body.appendChild(clone)
+
+      // 确保克隆内的所有元素也是白底黑字
+      clone.querySelectorAll('*').forEach(el => {
+        (el as HTMLElement).style.background = '#ffffff'
+        ;(el as HTMLElement).style.color = '#1a1a1a'
+      })
 
       await new Promise(resolve => setTimeout(resolve, 100))
 
@@ -307,13 +309,12 @@ export default function App() {
         html2canvas: { scale: 3, useCORS: true, backgroundColor: '#ffffff' },
         jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
       }
-      await html2pdf().set(opt).from(element).save()
+      await html2pdf().set(opt).from(clone).save()
+
+      document.body.removeChild(clone)
     } catch (err) {
       console.error('PDF生成失败:', err)
     } finally {
-      // 恢复原始样式
-      element.style.background = originalBg
-      element.style.color = originalColor
       setPdfLoading(false)
     }
   }
