@@ -287,15 +287,18 @@ export default function App() {
   const downloadPDF = async () => {
     if (!resultRef.current || !result) return
     setPdfLoading(true)
-    try {
-      const element = resultRef.current
-      element.classList.add('pdf-export')
-      // 等待样式应用并确保元素可见
-      await new Promise(resolve => setTimeout(resolve, 200))
 
-      // 调试：检查元素尺寸
-      console.log('element rect:', element.getBoundingClientRect())
-      console.log('element size:', element.offsetWidth, element.offsetHeight)
+    // 保存原始样式
+    const element = resultRef.current
+    const originalBg = element.style.background
+    const originalColor = element.style.color
+
+    try {
+      // 强制设置白底黑字
+      element.style.background = '#ffffff'
+      element.style.color = '#1a1a1a'
+
+      await new Promise(resolve => setTimeout(resolve, 100))
 
       const opt = {
         margin: [10, 10, 10, 10] as [number, number, number, number],
@@ -305,11 +308,12 @@ export default function App() {
         jsPDF: { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
       }
       await html2pdf().set(opt).from(element).save()
-      element.classList.remove('pdf-export')
     } catch (err) {
       console.error('PDF生成失败:', err)
-      resultRef.current?.classList.remove('pdf-export')
     } finally {
+      // 恢复原始样式
+      element.style.background = originalBg
+      element.style.color = originalColor
       setPdfLoading(false)
     }
   }
