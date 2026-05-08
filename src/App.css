@@ -178,10 +178,11 @@ body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; background: va
 
 /* PDF export specific styles (applied via html2pdf) */
 .pdf-export {
-  background: white;
+  background: #ffffff !important;
   color: #1a1a1a;
   padding: 20px;
 }
+.pdf-export * { background-color: #ffffff !important; color: #1a1a1a !important; }
 .pdf-export .result-card { background: white !important; border: 1px solid #ddd !important; border-radius: 8px !important; padding: 20px !important; box-shadow: none !important; }
 .pdf-export .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .pdf-export .result-header-left { display: flex; align-items: center; gap: 12px; }
@@ -197,7 +198,7 @@ body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; background: va
 .pdf-export .table-header { display: grid; grid-template-columns: 56px 66px 1fr 1fr 76px 1fr; background: #f0f0f0; border-bottom: 1px solid #ccc; padding: 9px 8px; }
 .pdf-export .table-header span { font-size: 11px; color: #333; font-weight: 700; text-align: center; padding: 0 4px; }
 .pdf-export .table-row { display: grid; grid-template-columns: 56px 66px 1fr 1fr 76px 1fr; border-bottom: 1px solid #eee; }
-.pdf-export .cell { padding: 9px 8px; border-right: 1px solid #ddd; font-size: 12px; line-height: 1.5; min-height: unset; display: flex; align-items: flex-start; color: #1a1a1a; }
+.pdf-export .cell { padding: 9px 8px; border-right: 1px solid #ddd; font-size: 12px; line-height: 1.5; min-height: unset; display: flex; align-items: flex-start; color: #1a1a1a; background: #ffffff; }
 .pdf-export .cell-sm { min-height: unset; align-items: center; justify-content: center; }
 .pdf-export .cell-text { color: #222; word-break: break-word; white-space: pre-wrap; }
 .pdf-export .voiceover { color: #1a40a0; font-style: italic; }
