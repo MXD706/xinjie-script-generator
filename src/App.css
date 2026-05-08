@@ -179,32 +179,31 @@ body { font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; background: va
 /* PDF export specific styles (applied via html2pdf) */
 .pdf-export {
   background: #ffffff !important;
-  color: #1a1a1a;
+  color: #1a1a1a !important;
   padding: 20px;
 }
-.pdf-export * { background-color: #ffffff !important; color: #1a1a1a !important; }
-.pdf-export .result-card { background: white !important; border: 1px solid #ddd !important; border-radius: 8px !important; padding: 20px !important; box-shadow: none !important; }
+.pdf-export .result-card { background: #ffffff !important; border: 1px solid #ddd !important; border-radius: 8px !important; padding: 20px !important; box-shadow: none !important; color: #1a1a1a !important; }
 .pdf-export .result-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
 .pdf-export .result-header-left { display: flex; align-items: center; gap: 12px; }
-.pdf-export .result-header-left h2 { font-size: 15px; color: #333; font-weight: 500; }
+.pdf-export .result-header-left h2 { font-size: 15px; color: #333 !important; font-weight: 500; }
 .pdf-export .result-actions { display: none !important; }
 .pdf-export .info-summary { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-.pdf-export .info-summary span { background: #f5f5f5; border: 1px solid #ddd; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #555; }
+.pdf-export .info-summary span { background: #f5f5f5 !important; border: 1px solid #ddd !important; border-radius: 20px; padding: 4px 12px; font-size: 12px; color: #555 !important; }
 .pdf-export .meta-row { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
-.pdf-export .meta-item { background: #f9f9f9; border: 1px solid #ddd; border-radius: 10px; padding: 10px 14px; min-width: 130px; flex: 1; }
-.pdf-export .meta-label { display: block; font-size: 11px; color: #888; margin-bottom: 4px; font-weight: 500; }
-.pdf-export .meta-value { font-size: 13px; font-weight: 500; color: #333; }
-.pdf-export .shots-table { border: 1px solid #ddd; border-radius: 6px; overflow: visible; margin-bottom: 18px; min-width: unset; width: 100%; }
-.pdf-export .table-header { display: grid; grid-template-columns: 56px 66px 1fr 1fr 76px 1fr; background: #f0f0f0; border-bottom: 1px solid #ccc; padding: 9px 8px; }
-.pdf-export .table-header span { font-size: 11px; color: #333; font-weight: 700; text-align: center; padding: 0 4px; }
-.pdf-export .table-row { display: grid; grid-template-columns: 56px 66px 1fr 1fr 76px 1fr; border-bottom: 1px solid #eee; }
-.pdf-export .cell { padding: 9px 8px; border-right: 1px solid #ddd; font-size: 12px; line-height: 1.5; min-height: unset; display: flex; align-items: flex-start; color: #1a1a1a; background: #ffffff; }
-.pdf-export .cell-sm { min-height: unset; align-items: center; justify-content: center; }
-.pdf-export .cell-text { color: #222; word-break: break-word; white-space: pre-wrap; }
-.pdf-export .voiceover { color: #1a40a0; font-style: italic; }
-.pdf-export .director-section { background: #f9f9f9; border: 1px solid #ddd; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
-.pdf-export .director-section h3 { font-size: 12px; color: #333; margin-bottom: 8px; font-weight: 600; }
-.pdf-export .director-text { font-size: 13px; line-height: 1.8; color: #444; white-space: pre-wrap; font-family: inherit; }
+.pdf-export .meta-item { background: #f9f9f9 !important; border: 1px solid #ddd !important; border-radius: 10px; padding: 10px 14px; min-width: 130px; flex: 1; }
+.pdf-export .meta-label { display: block; font-size: 11px; color: #888 !important; margin-bottom: 4px; font-weight: 500; background: transparent !important; }
+.pdf-export .meta-value { font-size: 13px; font-weight: 500; color: #333 !important; background: transparent !important; }
+.pdf-export .shots-table { border: 1px solid #ddd !important; border-radius: 6px; overflow: visible; margin-bottom: 18px; min-width: unset; width: 100%; background: #ffffff !important; }
+.pdf-export .table-header { display: grid; grid-template-columns: 56px 66px 1fr 1fr 76px 1fr; background: #f0f0f0 !important; border-bottom: 1px solid #ccc !important; padding: 9px 8px; }
+.pdf-export .table-header span { font-size: 11px; color: #333 !important; font-weight: 700; text-align: center; padding: 0 4px; background: transparent !important; }
+.pdf-export .table-row { display: grid; grid-template-columns: 56px 66px 1fr 1fr 76px 1fr; border-bottom: 1px solid #eee !important; background: #ffffff !important; }
+.pdf-export .cell { padding: 9px 8px; border-right: 1px solid #ddd !important; font-size: 12px; line-height: 1.5; min-height: unset; display: flex; align-items: flex-start; color: #222 !important; background: #ffffff !important; }
+.pdf-export .cell-sm { min-height: unset !important; align-items: center; justify-content: center; }
+.pdf-export .cell-text { color: #222 !important; word-break: break-word; white-space: pre-wrap; background: transparent !important; }
+.pdf-export .voiceover { color: #1a40a0 !important; font-style: italic; background: transparent !important; }
+.pdf-export .director-section { background: #f9f9f9 !important; border: 1px solid #ddd !important; border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+.pdf-export .director-section h3 { font-size: 12px; color: #333 !important; margin-bottom: 8px; font-weight: 600; background: transparent !important; }
+.pdf-export .director-text { font-size: 13px; line-height: 1.8; color: #444 !important; white-space: pre-wrap; font-family: inherit; background: transparent !important; }
 .pdf-export .edit-hint { display: none !important; }
 
 /* Responsive */
