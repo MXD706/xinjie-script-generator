@@ -361,24 +361,17 @@ export default function App() {
         doc.text(noteLines, 14, finalY + 6)
       }
 
-      // 使用blob方式下载，兼容手机浏览器
-      const pdfBlob = doc.output('blob')
-      // @ts-ignore - legacy Edge/IE API
-      if (navigator.msSaveOrOpenBlob) {
-        // @ts-ignore
-        navigator.msSaveOrOpenBlob(pdfBlob, `昕昕分镜_${result.destination}.pdf`)
-      } else {
-        const url = URL.createObjectURL(pdfBlob)
+      // 使用data URL方式，通过新窗口打开确保手机可保存
+      const pdfDataUrl = doc.output('datauristring')
+      const newWindow = window.open(pdfDataUrl, '_blank')
+      if (!newWindow) {
+        // 如果弹窗被阻止，使用备选方式
         const link = document.createElement('a')
-        link.href = url
+        link.href = pdfDataUrl
         link.download = `昕昕分镜_${result.destination}.pdf`
-        link.style.display = 'none'
         document.body.appendChild(link)
         link.click()
-        setTimeout(() => {
-          document.body.removeChild(link)
-          URL.revokeObjectURL(url)
-        }, 100)
+        document.body.removeChild(link)
       }
     } catch (err) {
       console.error('PDF生成失败:', err)
