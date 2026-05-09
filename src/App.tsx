@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react'
 import './App.css'
 import { jsPDF } from 'jspdf'
-import 'jspdf-autotable'
+import html2canvas from 'html2canvas'
 
 const DEEPSEEK_KEY_STORAGE = 'xinjie_deepseek_key'
 const HISTORY_STORAGE = 'xinjie_script_history'
@@ -303,86 +303,71 @@ export default function App() {
   }
 
   const downloadPDF = async () => {
-    if (!result || !result.shots?.length) return
+    if (!result || !resultRef.current) return
     setPdfLoading(true)
 
+    const node = resultRef.current
+    node.classList.add('pdf-export')
+
     try {
-      const doc = new jsPDF()
-      const pageWidth = doc.internal.pageSize.getWidth()
-      let yPos = 15
+      // 等一下让浏览器应用 pdf-export 样式
+      await new Promise(r => setTimeout(r, 60))
 
-      doc.setFontSize(16)
-      doc.setTextColor(30, 30, 30)
-      doc.text(`${result.destination} — ${result.purpose}`, pageWidth / 2, yPos, { align: 'center' })
-      yPos += 12
-
-      doc.setFontSize(10)
-      doc.setTextColor(80, 80, 80)
-      const infoItems = [result.destination, result.purpose, result.hotelName, result.shootTime].filter(Boolean)
-      doc.text(infoItems.join(' | '), pageWidth / 2, yPos, { align: 'center' })
-      yPos += 10
-
-      doc.setFontSize(11)
-      doc.setTextColor(60, 60, 60)
-      doc.text(`总时长: ${result.totalDuration}  |  背景音乐: ${result.bgm}  |  拍摄地点: ${result.shootLocation}`, 14, yPos)
-      yPos += 12
-
-      doc.setDrawColor(200, 200, 200)
-      doc.line(14, yPos, pageWidth - 14, yPos)
-      yPos += 8
-
-      const tableData = result.shots.map((shot, i) => [
-        String(i + 1),
-        shot.duration,
-        shot.timeRange,
-        shot.visual,
-        shot.voiceover,
-        shot.subtitle,
-        shot.directorNote
-      ])
-
-      // @ts-ignore - autotable types
-      doc.autoTable({
-        startY: yPos,
-        head: [['#', '时长', '时间段', '画面内容', '口播台词', '字幕', '摄影师指令']],
-        body: tableData,
-        styles: { fontSize: 8, cellPadding: 3 },
-        headStyles: { fillColor: [240, 240, 240], textColor: [30, 30, 30], fontStyle: 'bold' },
-        columnStyles: {
-          0: { cellWidth: 10 },
-          1: { cellWidth: 15 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 35 },
-          4: { cellWidth: 35 },
-          5: { cellWidth: 20 },
-          6: { cellWidth: 35 }
-        },
-        alternateRowStyles: { fillColor: [250, 250, 250] },
-        margin: { left: 14, right: 14 }
+      const canvas = await html2canvas(node, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false,
+        windowWidth: Math.max(node.scrollWidth, 1000),
       })
 
-      const finalY = (doc as any).lastAutoTable.finalY + 10
-      if (result.directorNotes) {
-        doc.setFontSize(12)
-        doc.setTextColor(30, 30, 30)
-        doc.text('导演注意事项', 14, finalY)
-        doc.setFontSize(10)
-        doc.setTextColor(60, 60, 60)
-        const noteLines = doc.splitTextToSize(result.directorNotes, pageWidth - 28)
-        doc.text(noteLines, 14, finalY + 6)
+      const imgData = canvas.toDataURL('image/jpeg', 0.92)
+      const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
+      const pageWidth = pdf.internal.pageSize.getWidth()
+      const pageHeight = pdf.internal.pageSize.getHeight()
+      const margin = 8
+      const imgWidth = pageWidth - margin * 2
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+      if (imgHeight <= pageHeight - margin * 2) {
+        pdf.addImage(imgData, 'JPEG', margin, margin, imgWidth, imgHeight)
+      } else {
+        // 长图分页
+        const pxPerMm = canvas.width / imgWidth
+        const pageContentHeightPx = (pageHeight - margin * 2) * pxPerMm
+        let renderedHeight = 0
+        let pageIndex = 0
+        while (renderedHeight < canvas.height) {
+          const sliceHeight = Math.min(pageContentHeightPx, canvas.height - renderedHeight)
+          const pageCanvas = document.createElement('canvas')
+          pageCanvas.width = canvas.width
+          pageCanvas.height = sliceHeight
+          const ctx = pageCanvas.getContext('2d')!
+          ctx.fillStyle = '#ffffff'
+          ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height)
+          ctx.drawImage(canvas, 0, renderedHeight, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight)
+          const pageImg = pageCanvas.toDataURL('image/jpeg', 0.92)
+          if (pageIndex > 0) pdf.addPage()
+          pdf.addImage(pageImg, 'JPEG', margin, margin, imgWidth, sliceHeight / pxPerMm)
+          renderedHeight += sliceHeight
+          pageIndex++
+        }
       }
 
-      const pdfDataUrl = doc.output('dataurlstring')
+      const blob = pdf.output('blob')
+      const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
-      link.href = pdfDataUrl
+      link.href = url
       link.download = `昕昕分镜_${result.destination}.pdf`
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
-    } catch (err) {
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    } catch (err: any) {
       console.error('PDF生成失败:', err)
-      alert('PDF生成失败，请重试')
+      alert('PDF 生成失败：' + (err?.message || '未知错误') + '\n请尝试用「复制全部」或浏览器「打印为 PDF」')
     } finally {
+      node.classList.remove('pdf-export')
       setPdfLoading(false)
     }
   }
