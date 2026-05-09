@@ -543,6 +543,52 @@ body::after {
   border-radius: 999px;
 }
 
+/* —— 微信提示与图片预览 —— */
+.wechat-tip {
+  background: linear-gradient(135deg, rgba(255, 159, 67, 0.12), rgba(255, 45, 85, 0.08));
+  border: 1px solid rgba(255, 159, 67, 0.3);
+  color: #ffc88c;
+  font-size: 12.5px;
+  line-height: 1.7;
+  padding: 11px 14px;
+  border-radius: 12px;
+  margin-bottom: 16px;
+}
+.wechat-tip b { color: #ffd86b; font-weight: 600; }
+
+.img-preview-overlay { padding: 0; align-items: stretch; }
+.img-preview-box {
+  background: #1a1632;
+  width: 100%; max-width: 720px;
+  margin: auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+  max-height: 100vh; overflow-y: auto;
+  border-radius: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+.img-preview-tip {
+  text-align: center;
+  font-size: 13px; color: #ffd86b;
+  background: rgba(255, 159, 67, 0.12);
+  border: 1px solid rgba(255, 159, 67, 0.3);
+  padding: 10px 14px; border-radius: 10px;
+  font-weight: 500;
+}
+.img-preview-img {
+  width: 100%; height: auto; display: block;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.img-preview-close {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  padding: 11px; border-radius: 10px;
+  cursor: pointer; font-size: 14px; font-weight: 500;
+  position: sticky; bottom: 0;
+}
+.img-preview-close:hover { background: rgba(255, 255, 255, 0.14); }
+
 /* —— Print / PDF —— */
 @media print {
   body { background: white !important; color: #1a1a1a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }

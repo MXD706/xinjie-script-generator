@@ -139,7 +139,12 @@ export default function App() {
   const [rawText, setRawText] = useState('')
   const [formOpen, setFormOpen] = useState(true)
   const [pdfLoading, setPdfLoading] = useState(false)
+  const [imgPreview, setImgPreview] = useState<string>('')
   const resultRef = useRef<HTMLDivElement>(null)
+
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent.toLowerCase() : ''
+  const isWechat = /micromessenger/.test(ua)
+  const isMobile = /iphone|ipad|ipod|android|mobile/.test(ua)
 
   const [destination, setDestination] = useState('')
   const [purpose, setPurpose] = useState('')
@@ -302,24 +307,62 @@ export default function App() {
     setHistory(newHistory)
   }
 
-  const downloadPDF = async () => {
-    if (!result || !resultRef.current) return
-    setPdfLoading(true)
-
+  const renderToCanvas = async () => {
+    if (!result || !resultRef.current) return null
     const node = resultRef.current
     node.classList.add('pdf-export')
-
+    await new Promise(r => setTimeout(r, 60))
     try {
-      // 等一下让浏览器应用 pdf-export 样式
-      await new Promise(r => setTimeout(r, 60))
-
       const canvas = await html2canvas(node, {
-        scale: 2,
+        scale: isMobile ? 1.5 : 2,
         backgroundColor: '#ffffff',
         useCORS: true,
         logging: false,
         windowWidth: Math.max(node.scrollWidth, 1000),
       })
+      return canvas
+    } finally {
+      node.classList.remove('pdf-export')
+    }
+  }
+
+  const downloadImage = async () => {
+    if (!result) return
+    setPdfLoading(true)
+    try {
+      const canvas = await renderToCanvas()
+      if (!canvas) return
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+      // 微信内置浏览器拦截 download，改为预览模式让用户长按保存
+      if (isWechat) {
+        setImgPreview(dataUrl)
+        return
+      }
+      const link = document.createElement('a')
+      link.href = dataUrl
+      link.download = `昕昕分镜_${result.destination}.jpg`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    } catch (err: any) {
+      console.error('图片生成失败:', err)
+      alert('图片生成失败：' + (err?.message || '未知错误'))
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
+  const downloadPDF = async () => {
+    if (!result || !resultRef.current) return
+    // 微信里直接下载 PDF 大概率被拦截，改为长图模式
+    if (isWechat) {
+      await downloadImage()
+      return
+    }
+    setPdfLoading(true)
+    try {
+      const canvas = await renderToCanvas()
+      if (!canvas) return
 
       const imgData = canvas.toDataURL('image/jpeg', 0.92)
       const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
@@ -332,7 +375,6 @@ export default function App() {
       if (imgHeight <= pageHeight - margin * 2) {
         pdf.addImage(imgData, 'JPEG', margin, margin, imgWidth, imgHeight)
       } else {
-        // 长图分页
         const pxPerMm = canvas.width / imgWidth
         const pageContentHeightPx = (pageHeight - margin * 2) * pxPerMm
         let renderedHeight = 0
@@ -354,6 +396,20 @@ export default function App() {
         }
       }
 
+      // 移动端浏览器优先用新窗口打开 PDF（dataurl），下载链接经常被拦
+      if (isMobile) {
+        const dataUrl = pdf.output('dataurlstring')
+        const w = window.open()
+        if (w) {
+          w.document.write(`<title>昕昕分镜_${result.destination}.pdf</title><iframe src="${dataUrl}" frameborder="0" style="border:0;width:100%;height:100vh" allowfullscreen></iframe>`)
+        } else {
+          // 弹窗被拦：退化成图片预览
+          const dataUrl2 = canvas.toDataURL('image/jpeg', 0.92)
+          setImgPreview(dataUrl2)
+        }
+        return
+      }
+
       const blob = pdf.output('blob')
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
@@ -365,9 +421,8 @@ export default function App() {
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (err: any) {
       console.error('PDF生成失败:', err)
-      alert('PDF 生成失败：' + (err?.message || '未知错误') + '\n请尝试用「复制全部」或浏览器「打印为 PDF」')
+      alert('PDF 生成失败：' + (err?.message || '未知错误') + '\n请用「复制全部」或保存长图')
     } finally {
-      node.classList.remove('pdf-export')
       setPdfLoading(false)
     }
   }
@@ -418,6 +473,18 @@ export default function App() {
               <button onClick={() => setShowKeyInput(false)}>取消</button>
               <button className="primary" onClick={handleSaveKey}>保存</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {imgPreview && (
+        <div className="modal-overlay img-preview-overlay" onClick={() => setImgPreview('')}>
+          <div className="img-preview-box" onClick={e => e.stopPropagation()}>
+            <div className="img-preview-tip">
+              {isWechat ? '👇 长按图片 → 保存到相册' : '右键图片 → 另存为'}
+            </div>
+            <img src={imgPreview} alt="分镜长图" className="img-preview-img" />
+            <button className="img-preview-close" onClick={() => setImgPreview('')}>关闭</button>
           </div>
         </div>
       )}
@@ -599,13 +666,21 @@ export default function App() {
               </div>
               <div className="result-actions">
                 <button className="action-btn" onClick={copyAll}>{copied ? '✅ 已复制' : '📋 复制'}</button>
-                <button className="action-btn primary" onClick={downloadPDF} disabled={pdfLoading}>{pdfLoading ? '⏳ 生成中...' : '📄 PDF'}</button>
+                <button className="action-btn primary" onClick={downloadPDF} disabled={pdfLoading}>
+                  {pdfLoading ? '⏳ 生成中...' : isWechat ? '🖼 保存长图' : isMobile ? '📄 PDF 预览' : '📄 PDF'}
+                </button>
                 <button className="action-btn danger" onClick={() => {
                   const newHistory = history.filter(s => s.id !== result.id)
                   setHistory(newHistory); saveHistory(newHistory); setResult(null); setRawText('')
                 }}>🗑️ 删除</button>
               </div>
             </div>
+
+            {isWechat && (
+              <div className="wechat-tip">
+                💡 微信不支持直接下载文件，请点「保存长图」生成图片后<b>长按保存到相册</b>，或点右上角「···」用浏览器打开。
+              </div>
+            )}
 
             <div className="info-summary">
               <span>📍 {result.destination}</span>
