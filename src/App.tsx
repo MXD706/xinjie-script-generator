@@ -17,7 +17,6 @@ interface Shot {
 
 interface Script {
   id: number
-  // Form inputs
   destination: string
   purpose: string
   departure: string
@@ -34,7 +33,6 @@ interface Script {
   keyMessage: string
   requiredShots: string
   extraNotes: string
-  // Output
   totalDuration: string
   bgm: string
   shootLocation: string
@@ -118,6 +116,15 @@ const SYSTEM_PROMPT = `你是昕昕，一个在大陆生活的台湾女生，你
 - 严格按照用户提供的拍摄信息来写，不自己瞎编
 `
 
+const DEST_MAX = 100
+const PURPOSE_MAX = 200
+
+function CounterHint({ value, max }: { value: string; max: number }) {
+  const len = value.length
+  const cls = len > max ? 'over' : len > max * 0.85 ? 'warn' : ''
+  return <span className={`field-counter ${cls}`}>{len}/{max}</span>
+}
+
 export default function App() {
   const [key, setKey] = useState(getStoredKey)
   const [loading, setLoading] = useState(false)
@@ -134,7 +141,6 @@ export default function App() {
   const [pdfLoading, setPdfLoading] = useState(false)
   const resultRef = useRef<HTMLDivElement>(null)
 
-  // Form state
   const [destination, setDestination] = useState('')
   const [purpose, setPurpose] = useState('')
   const [departure, setDeparture] = useState('')
@@ -196,6 +202,8 @@ export default function App() {
     if (!key) { setShowKeyInput(true); return }
     if (!destination.trim()) { setError('请填写目的地'); return }
     if (!purpose.trim()) { setError('请填写去干什么'); return }
+    if (destination.length > DEST_MAX) { setError(`目的地不能超过${DEST_MAX}字`); return }
+    if (purpose.length > PURPOSE_MAX) { setError(`去干什么不能超过${PURPOSE_MAX}字`); return }
 
     setLoading(true)
     setError('')
@@ -257,15 +265,24 @@ export default function App() {
         createdAt: new Date().toLocaleString('zh-CN')
       }
       setResult(script)
-      const newHistory = [script, ...history.filter(s => s.destination !== script.destination)].slice(0, 20)
+      const newHistory = [script, ...history].slice(0, 20)
       setHistory(newHistory)
       saveHistory(newHistory)
     } catch (err: any) {
-      setError(err.message || '生成失败')
+      const msg = err.message || ''
+      if (msg.includes('401') || msg.includes('Unauthorized')) {
+        setError('API Key 无效，请检查')
+      } else if (msg.includes('429') || msg.includes('rate')) {
+        setError('请求过于频繁，请稍后再试')
+      } else if (msg.includes('网络') || msg.includes('fetch')) {
+        setError('网络连接失败，请检查网络')
+      } else {
+        setError(msg || '生成失败，请重试')
+      }
     } finally {
       setLoading(false)
     }
-  }, [key, destination, purpose, departure, transport, transportDuration, shootTime, weather, arriveShoot, hotelName, howToHotel, hotelShoot, companions, equipment, keyMessage, requiredShots, extraNotes, history])
+  }, [key, destination, purpose, departure, transport, transportDuration, shootTime, weather, arriveShoot, hotelName, howToHotel, hotelShoot, companions, equipment, keyMessage, requiredShots, extraNotes])
 
   const updateShot = (i: number, field: keyof Shot, val: string) => {
     if (!result) return
@@ -294,31 +311,26 @@ export default function App() {
       const pageWidth = doc.internal.pageSize.getWidth()
       let yPos = 15
 
-      // 标题
       doc.setFontSize(16)
       doc.setTextColor(30, 30, 30)
       doc.text(`${result.destination} — ${result.purpose}`, pageWidth / 2, yPos, { align: 'center' })
       yPos += 12
 
-      // 信息摘要
       doc.setFontSize(10)
       doc.setTextColor(80, 80, 80)
       const infoItems = [result.destination, result.purpose, result.hotelName, result.shootTime].filter(Boolean)
       doc.text(infoItems.join(' | '), pageWidth / 2, yPos, { align: 'center' })
       yPos += 10
 
-      // 元信息
       doc.setFontSize(11)
       doc.setTextColor(60, 60, 60)
       doc.text(`总时长: ${result.totalDuration}  |  背景音乐: ${result.bgm}  |  拍摄地点: ${result.shootLocation}`, 14, yPos)
       yPos += 12
 
-      // 分隔线
       doc.setDrawColor(200, 200, 200)
       doc.line(14, yPos, pageWidth - 14, yPos)
       yPos += 8
 
-      // 表格数据
       const tableData = result.shots.map((shot, i) => [
         String(i + 1),
         shot.duration,
@@ -349,7 +361,6 @@ export default function App() {
         margin: { left: 14, right: 14 }
       })
 
-      // 导演注意事项
       const finalY = (doc as any).lastAutoTable.finalY + 10
       if (result.directorNotes) {
         doc.setFontSize(12)
@@ -361,20 +372,16 @@ export default function App() {
         doc.text(noteLines, 14, finalY + 6)
       }
 
-      // 使用data URL方式，通过新窗口打开确保手机可保存
-      const pdfDataUrl = doc.output('datauristring')
-      const newWindow = window.open(pdfDataUrl, '_blank')
-      if (!newWindow) {
-        // 如果弹窗被阻止，使用备选方式
-        const link = document.createElement('a')
-        link.href = pdfDataUrl
-        link.download = `昕昕分镜_${result.destination}.pdf`
-        document.body.appendChild(link)
-        link.click()
-        document.body.removeChild(link)
-      }
+      const pdfDataUrl = doc.output('dataurlstring')
+      const link = document.createElement('a')
+      link.href = pdfDataUrl
+      link.download = `昕昕分镜_${result.destination}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
     } catch (err) {
       console.error('PDF生成失败:', err)
+      alert('PDF生成失败，请重试')
     } finally {
       setPdfLoading(false)
     }
@@ -406,17 +413,20 @@ export default function App() {
   return (
     <div className="container">
       <header className="header">
-        <h1>🎬 昕昕分镜脚本器</h1>
-        <p className="subtitle">填写真实拍摄信息 → 生成准确分镜脚本</p>
-        {!key && <button className="key-btn" onClick={() => setShowKeyInput(true)}>🔑 设置API Key</button>}
-        {key && <button className="key-btn small" onClick={() => setShowKeyInput(true)}>更换Key</button>}
+        <span className="badge"><span className="dot"></span>昕昕 · 抖音分镜脚本生成器</span>
+        <h1>🎬 一句话生成爆款分镜</h1>
+        <p className="subtitle">填真实拍摄信息 → AI 一键产出可拍摄的分镜表 · 支持导出 PDF</p>
+        <div className="header-actions">
+          {!key && <button className="key-btn" onClick={() => setShowKeyInput(true)}>🔑 设置 API Key</button>}
+          {key && <button className="key-btn small set" onClick={() => setShowKeyInput(true)}>Key 已配置 · 更换</button>}
+        </div>
       </header>
 
       {showKeyInput && (
         <div className="modal-overlay" onClick={() => setShowKeyInput(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <h3>设置 DeepSeek API Key</h3>
-            <p>Key仅存储在本地浏览器，不会上传</p>
+            <h3>🔑 设置 DeepSeek API Key</h3>
+            <p>Key 仅存储在你本地浏览器，不会上传任何服务器。还没有 Key？去 <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">platform.deepseek.com</a> 申请。</p>
             <input type="password" value={tempKey} onChange={e => setTempKey(e.target.value)} placeholder="sk-..." className="key-input"
               onKeyDown={e => e.key === 'Enter' && handleSaveKey()} />
             <div className="modal-actions">
@@ -428,177 +438,184 @@ export default function App() {
       )}
 
       <main className="main">
-        {/* Form */}
-        <div className="form-card">
+        {/* —— 表单 —— */}
+        <div className="form-card glass-card">
           <div className="form-toggle" onClick={() => setFormOpen(!formOpen)}>
-            <h2>📋 拍摄信息 <span className="form-hint">填得越细生成越准</span></h2>
+            <h2>📋 拍摄信息<span className="form-hint">填得越细，生成越准</span></h2>
             <span className="toggle-icon">{formOpen ? '▲ 收起' : '▼ 展开'}</span>
           </div>
 
           {formOpen && (
             <div className="form-body">
-              {/* Row 1: Destination + Purpose */}
-              <div className="form-row">
-                <div className="form-field required">
-                  <label>目的地</label>
-                  <input type="text" value={destination} onChange={e => setDestination(e.target.value)} placeholder="比如：西班牙巴塞罗那" />
+              {/* 基础信息 */}
+              <div className="form-section">
+                <div className="form-section-title">
+                  <span className="icon">📍</span>基础信息<span className="desc">必填，决定脚本方向</span>
                 </div>
-                <div className="form-field required">
-                  <label>去干什么</label>
-                  <input type="text" value={purpose} onChange={e => setPurpose(e.target.value)} placeholder="比如：看小米汽车展厅" />
+                <div className="form-row">
+                  <div className="form-field required">
+                    <label>目的地</label>
+                    <input type="text" value={destination} onChange={e => setDestination(e.target.value)} placeholder="比如：西班牙巴塞罗那" maxLength={DEST_MAX} />
+                    <CounterHint value={destination} max={DEST_MAX} />
+                  </div>
+                  <div className="form-field required">
+                    <label>去干什么</label>
+                    <input type="text" value={purpose} onChange={e => setPurpose(e.target.value)} placeholder="比如：看小米汽车展厅" maxLength={PURPOSE_MAX} />
+                    <CounterHint value={purpose} max={PURPOSE_MAX} />
+                  </div>
                 </div>
-              </div>
-
-              {/* Row 2: Departure + Transport */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>出发地</label>
-                  <input type="text" value={departure} onChange={e => setDeparture(e.target.value)} placeholder="比如：台湾家里 / 深圳" />
-                </div>
-                <div className="form-field">
-                  <label>交通方式</label>
-                  <input type="text" value={transport} onChange={e => setTransport(e.target.value)} placeholder="比如：台湾出发飞马德里再火车" />
-                </div>
-              </div>
-
-              {/* Row 3: Transport Duration + Shoot Time */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>交通时长</label>
-                  <input type="text" value={transportDuration} onChange={e => setTransportDuration(e.target.value)} placeholder="比如：飞13小时 + 转机3小时" />
-                </div>
-                <div className="form-field">
-                  <label>拍摄时间</label>
-                  <select value={shootTime} onChange={e => setShootTime(e.target.value)} className="form-select">
-                    <option value="">选择时段</option>
-                    <option value="清晨/上午">清晨/上午</option>
-                    <option value="中午/下午">中午/下午</option>
-                    <option value="傍晚/黄金时段">傍晚/黄金时段</option>
-                    <option value="晚上">晚上</option>
-                    <option value="全天">全天</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Row 4: Weather + Companions */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>天气</label>
-                  <select value={weather} onChange={e => setWeather(e.target.value)} className="form-select">
-                    <option value="">选择天气</option>
-                    <option value="晴天">晴天</option>
-                    <option value="阴天">阴天</option>
-                    <option value="雨天">雨天</option>
-                    <option value="雪天">雪天</option>
-                  </select>
-                </div>
-                <div className="form-field">
-                  <label>同行人</label>
-                  <select value={companions} onChange={e => setCompanions(e.target.value)} className="form-select">
-                    <option value="">选择同行人</option>
-                    <option value="一个人">一个人</option>
-                    <option value="摄影师跟拍">摄影师跟拍</option>
-                    <option value="朋友一起">朋友一起</option>
-                    <option value="家人一起">家人一起</option>
-                  </select>
+                <div className="form-row">
+                  <div className="form-field">
+                    <label>同行人</label>
+                    <select value={companions} onChange={e => setCompanions(e.target.value)} className="form-select">
+                      <option value="">选择同行人</option>
+                      <option value="一个人">一个人</option>
+                      <option value="摄影师跟拍">摄影师跟拍</option>
+                      <option value="朋友一起">朋友一起</option>
+                      <option value="家人一起">家人一起</option>
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>拍摄设备</label>
+                    <select value={equipment} onChange={e => setEquipment(e.target.value)} className="form-select">
+                      <option value="">选择设备</option>
+                      <option value="手机">手机</option>
+                      <option value="相机">相机</option>
+                      <option value="手机+稳定器">手机+稳定器</option>
+                      <option value="相机+摄影师">相机+摄影师</option>
+                      <option value="有航拍">有航拍</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              {/* Row 5: Equipment + Key Message */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>拍摄设备</label>
-                  <select value={equipment} onChange={e => setEquipment(e.target.value)} className="form-select">
-                    <option value="">选择设备</option>
-                    <option value="手机">手机</option>
-                    <option value="相机">相机</option>
-                    <option value="手机+稳定器">手机+稳定器</option>
-                    <option value="相机+摄影师">相机+摄影师</option>
-                    <option value="有航拍">有航拍</option>
-                  </select>
+              {/* 交通安排 */}
+              <div className="form-section">
+                <div className="form-section-title">
+                  <span className="icon">🚗</span>交通安排<span className="desc">影响开头节奏和真实感</span>
                 </div>
-                <div className="form-field">
-                  <label>视频重点</label>
-                  <select value={keyMessage} onChange={e => setKeyMessage(e.target.value)} className="form-select">
-                    <option value="">选择重点</option>
-                    <option value="惊喜发现">惊喜发现</option>
-                    <option value="被震撼的感受">被震撼的感受</option>
-                    <option value="冲动决定">冲动决定</option>
-                    <option value="两岸差异观察">两岸差异观察</option>
-                    <option value="真实体验分享">真实体验分享</option>
-                    <option value="情感走心">情感走心</option>
-                  </select>
+                <div className="form-row">
+                  <div className="form-field">
+                    <label>出发地</label>
+                    <input type="text" value={departure} onChange={e => setDeparture(e.target.value)} placeholder="比如：台湾家里 / 深圳" />
+                  </div>
+                  <div className="form-field">
+                    <label>交通方式</label>
+                    <input type="text" value={transport} onChange={e => setTransport(e.target.value)} placeholder="比如：飞马德里再火车" />
+                  </div>
                 </div>
-              </div>
-
-              {/* Row 6: Arrive Shoot */}
-              <div className="form-row">
-                <div className="form-field full">
-                  <label>到了之后怎么拍</label>
-                  <input type="text" value={arriveShoot} onChange={e => setArriveShoot(e.target.value)} placeholder="比如：在展厅外拍外观，进店拍内饰细节" />
-                </div>
-              </div>
-
-              {/* Row 7: Hotel + How to Hotel */}
-              <div className="form-row">
-                <div className="form-field">
-                  <label>住哪个酒店</label>
-                  <input type="text" value={hotelName} onChange={e => setHotelName(e.target.value)} placeholder="比如：巴塞罗那W酒店" />
-                </div>
-                <div className="form-field">
-                  <label>怎么去酒店</label>
-                  <input type="text" value={howToHotel} onChange={e => setHowToHotel(e.target.value)} placeholder="比如：打车去，路上拍街景" />
+                <div className="form-row">
+                  <div className="form-field">
+                    <label>交通时长</label>
+                    <input type="text" value={transportDuration} onChange={e => setTransportDuration(e.target.value)} placeholder="比如：飞13小时 + 转机3小时" />
+                  </div>
+                  <div className="form-field">
+                    <label>拍摄时间</label>
+                    <select value={shootTime} onChange={e => setShootTime(e.target.value)} className="form-select">
+                      <option value="">选择时段</option>
+                      <option value="清晨/上午">清晨 / 上午</option>
+                      <option value="中午/下午">中午 / 下午</option>
+                      <option value="傍晚/黄金时段">傍晚 / 黄金时段</option>
+                      <option value="晚上">晚上</option>
+                      <option value="全天">全天</option>
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>天气</label>
+                    <select value={weather} onChange={e => setWeather(e.target.value)} className="form-select">
+                      <option value="">选择天气</option>
+                      <option value="晴天">☀️ 晴天</option>
+                      <option value="阴天">☁️ 阴天</option>
+                      <option value="雨天">🌧 雨天</option>
+                      <option value="雪天">❄️ 雪天</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              {/* Row 8: Hotel Shoot */}
-              <div className="form-row">
-                <div className="form-field full">
-                  <label>酒店拍什么</label>
-                  <input type="text" value={hotelShoot} onChange={e => setHotelShoot(e.target.value)} placeholder="比如：拍房间窗外海景，大堂环境，酒店早餐" />
+              {/* 住宿安排 */}
+              <div className="form-section">
+                <div className="form-section-title">
+                  <span className="icon">🏨</span>住宿安排<span className="desc">提供更多场景细节</span>
+                </div>
+                <div className="form-row">
+                  <div className="form-field">
+                    <label>住哪个酒店</label>
+                    <input type="text" value={hotelName} onChange={e => setHotelName(e.target.value)} placeholder="比如：巴塞罗那 W 酒店" />
+                  </div>
+                  <div className="form-field">
+                    <label>怎么去酒店</label>
+                    <input type="text" value={howToHotel} onChange={e => setHowToHotel(e.target.value)} placeholder="比如：打车去，路上拍街景" />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-field full">
+                    <label>酒店拍什么</label>
+                    <input type="text" value={hotelShoot} onChange={e => setHotelShoot(e.target.value)} placeholder="比如：拍房间窗外海景、大堂环境、酒店早餐" />
+                  </div>
                 </div>
               </div>
 
-              {/* Row 9: Required Shots */}
-              <div className="form-row">
-                <div className="form-field full">
-                  <label>必须有镜头</label>
-                  <input type="text" value={requiredShots} onChange={e => setRequiredShots(e.target.value)} placeholder="比如：一定要有展厅外观，酒店夜景，车内方向盘视角" />
+              {/* 创作要点 */}
+              <div className="form-section">
+                <div className="form-section-title">
+                  <span className="icon">🎬</span>创作要点<span className="desc">决定爆款方向</span>
                 </div>
-              </div>
-
-              {/* Row 10: Extra Notes */}
-              <div className="form-row">
-                <div className="form-field full">
-                  <label>额外补充</label>
-                  <textarea value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder="还有什么特别想拍的、要注意的、或想表达的内容？"
-                    rows={2} />
+                <div className="form-row">
+                  <div className="form-field">
+                    <label>视频重点</label>
+                    <select value={keyMessage} onChange={e => setKeyMessage(e.target.value)} className="form-select">
+                      <option value="">选择重点</option>
+                      <option value="惊喜发现">惊喜发现</option>
+                      <option value="被震撼的感受">被震撼的感受</option>
+                      <option value="冲动决定">冲动决定</option>
+                      <option value="两岸差异观察">两岸差异观察</option>
+                      <option value="真实体验分享">真实体验分享</option>
+                      <option value="情感走心">情感走心</option>
+                    </select>
+                  </div>
+                  <div className="form-field">
+                    <label>到了之后怎么拍</label>
+                    <input type="text" value={arriveShoot} onChange={e => setArriveShoot(e.target.value)} placeholder="比如：先拍展厅外观，再进店拍内饰" />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-field full">
+                    <label>必须有的镜头</label>
+                    <input type="text" value={requiredShots} onChange={e => setRequiredShots(e.target.value)} placeholder="比如：一定要有展厅外观、酒店夜景、车内方向盘视角" />
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-field full">
+                    <label>额外补充</label>
+                    <textarea value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder="还有什么特别想拍的、要注意的、或想表达的内容？" rows={2} />
+                  </div>
                 </div>
               </div>
 
               <div className="form-footer">
-                {error && <p className="error">{error}</p>}
-                {!key && !showKeyInput && <p className="hint">👉 先设置API Key再生成</p>}
+                {error && <p className="error">⚠️ {error}</p>}
+                {!key && !showKeyInput && !error && <p className="hint">👉 先设置 API Key 再生成</p>}
                 <button className={`generate-btn ${loading ? 'loading' : ''}`} onClick={generateScript} disabled={loading}>
-                  {loading ? <><span className="spinner"></span>生成中...</> : '🎬 生成分镜'}
+                  {loading ? <><span className="spinner"></span>AI 创作中...</> : <>✨ 生成分镜脚本</>}
                 </button>
               </div>
             </div>
           )}
         </div>
 
-        {/* Result */}
+        {/* —— 结果 —— */}
         {result && (
-          <div className="result-card" ref={resultRef}>
+          <div className="result-card glass-card" ref={resultRef}>
             <div className="result-header">
               <div className="result-header-left">
-                <button className="back-btn" onClick={() => { setResult(null); setRawText('') }}>← 返回</button>
-                <h2>✨ {result.destination} — {result.purpose}</h2>
+                <button className="action-btn" onClick={() => { setResult(null); setRawText('') }}>← 返回</button>
+                <h2>{result.destination} — {result.purpose}</h2>
               </div>
               <div className="result-actions">
-                <button className="copy-btn" onClick={copyAll}>{copied ? '✅ 已复制' : '📋 复制全部'}</button>
-                <button className="pdf-btn" onClick={downloadPDF} disabled={pdfLoading}>{pdfLoading ? '⏳ 生成中...' : '📄 下载PDF'}</button>
-                <button className="delete-btn" onClick={() => {
+                <button className="action-btn" onClick={copyAll}>{copied ? '✅ 已复制' : '📋 复制'}</button>
+                <button className="action-btn primary" onClick={downloadPDF} disabled={pdfLoading}>{pdfLoading ? '⏳ 生成中...' : '📄 PDF'}</button>
+                <button className="action-btn danger" onClick={() => {
                   const newHistory = history.filter(s => s.id !== result.id)
                   setHistory(newHistory); saveHistory(newHistory); setResult(null); setRawText('')
                 }}>🗑️ 删除</button>
@@ -610,23 +627,24 @@ export default function App() {
               <span>🎯 {result.purpose}</span>
               {result.hotelName && <span>🏨 {result.hotelName}</span>}
               {result.shootTime && <span>⏰ {result.shootTime}</span>}
+              {result.weather && <span>🌤 {result.weather}</span>}
             </div>
 
             <div className="meta-row">
               <div className="meta-item" onClick={() => !editMode && startMetaEdit('totalDuration')}>
-                <span className="meta-label">总时长</span>
+                <span className="meta-label">⏱ 总时长</span>
                 {isMetaEditing('totalDuration') ? (
                   <input className="meta-input" value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveEdit()} onBlur={saveEdit} autoFocus />
                 ) : (<span className="meta-value">{result.totalDuration}</span>)}
               </div>
               <div className="meta-item" onClick={() => !editMode && startMetaEdit('bgm')}>
-                <span className="meta-label">背景音乐</span>
+                <span className="meta-label">🎵 背景音乐</span>
                 {isMetaEditing('bgm') ? (
                   <input className="meta-input" value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveEdit()} onBlur={saveEdit} autoFocus />
                 ) : (<span className="meta-value">{result.bgm}</span>)}
               </div>
               <div className="meta-item" onClick={() => !editMode && startMetaEdit('shootLocation')}>
-                <span className="meta-label">拍摄地点</span>
+                <span className="meta-label">📌 拍摄地点</span>
                 {isMetaEditing('shootLocation') ? (
                   <input className="meta-input" value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && saveEdit()} onBlur={saveEdit} autoFocus />
                 ) : (<span className="meta-value">{result.shootLocation}</span>)}
@@ -635,10 +653,11 @@ export default function App() {
 
             <div className="shots-table">
               <div className="table-header">
-                <span>时长</span><span>时间段</span><span>画面内容</span><span>口播台词</span><span>字幕</span><span>摄影师指令</span>
+                <span>#</span><span>时长</span><span>时间段</span><span>画面内容</span><span>口播台词</span><span>字幕</span><span>摄影师指令</span>
               </div>
               {result.shots.map((shot, i) => (
                 <div key={i} className="table-row">
+                  <div className="cell cell-num cell-sm"><span className="num-badge">{i + 1}</span></div>
                   <div className="cell cell-sm" onClick={() => !editMode && startShotEdit(i, 'duration')}>
                     {isShotEditing(i, 'duration') ? (
                       <textarea className="cell-input" value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.ctrlKey ? saveEdit() : null)} onBlur={saveEdit} rows={2} autoFocus />
@@ -680,12 +699,12 @@ export default function App() {
               </div>
             )}
 
-            <p className="edit-hint">💡 点击任意格子直接修改</p>
+            <p className="edit-hint">💡 点击任意单元格即可编辑修改</p>
           </div>
         )}
 
         {rawText && !result && (
-          <div className="raw-text-card">
+          <div className="raw-text-card glass-card">
             <h3>原始输出（解析失败）</h3>
             <pre className="raw-text">{rawText}</pre>
             <p className="error">{error || '格式解析失败，请重试'}</p>
@@ -694,18 +713,37 @@ export default function App() {
 
         {history.length > 0 && !result && (
           <div className="history-section">
-            <h3>📜 历史记录</h3>
+            <h3>📜 历史记录<span className="history-count">{history.length}</span></h3>
             <div className="history-list">
               {history.map(script => (
                 <div key={script.id} className="history-item" onClick={() => { setResult(script); setRawText('') }}>
-                  <span className="history-dest">{script.destination} — {script.purpose}</span>
-                  <span className="history-date">{script.createdAt}</span>
+                  <div className="history-icon">🎬</div>
+                  <div className="history-text">
+                    <span className="history-dest">{script.destination} — {script.purpose}</span>
+                    <span className="history-date">{script.createdAt}</span>
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
+
+        {history.length === 0 && !result && !rawText && !loading && (
+          <div className="empty-state">
+            <span className="emoji">✨</span>
+            <h3>还没有生成过脚本</h3>
+            <p>填写上方拍摄信息，点击「生成分镜脚本」<br />让 AI 替你写出可直接拍摄的爆款分镜表</p>
+          </div>
+        )}
       </main>
+
+      <footer className="footer">
+        <p>昕昕分镜脚本生成器 · 数据仅存储在你的浏览器，不上传任何服务器</p>
+        <div className="footer-links">
+          <a href="https://platform.deepseek.com/api_keys" target="_blank" rel="noreferrer">获取 API Key</a>
+          <a href="https://github.com/MXD706/xinjie-script-generator" target="_blank" rel="noreferrer">GitHub</a>
+        </div>
+      </footer>
     </div>
   )
 }
