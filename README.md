@@ -1,73 +1,44 @@
-# React + TypeScript + Vite
+# 昕昕分镜脚本生成器
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+> 填真实拍摄信息 → AI 一键产出可直接拍摄的分镜表。支持导出 PDF、长图、Markdown，可离线使用。
 
-Currently, two official plugins are available:
+**在线地址**：https://mxd706.github.io/xinjie-script-generator/
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 功能
 
-## React Compiler
+- 🎬 按"昕昕"人设（台湾女生在大陆）生成抖音旅行分镜
+- ⚡ DeepSeek 流式生成，边写边显示
+- 📋 4 种爆款模板一键选（冲动行动 / 对比发现 / 情感走心 / 体验分享）
+- ⏱ 支持 28s / 45s / 60s 时长选择
+- ✏️ 每个镜头可编辑、删除、上下移动
+- 🔁 单镜头重新生成
+- 📎 自动保存表单草稿
+- 🔗 一键分享链接（脚本编码进 URL，不走服务器）
+- 📥 导出 PDF / 长图 / Markdown
+- 📱 PWA 支持，可安装到桌面，离线查看历史
+- 🔒 API Key 与历史记录仅存储在你本地浏览器，不上传任何服务器
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 使用
 
-## Expanding the ESLint configuration
+1. 打开在线地址
+2. 去 [DeepSeek](https://platform.deepseek.com/api_keys) 申请一个 API Key
+3. 在页面点"🔑 设置 API Key"填入
+4. 填写目的地和去干什么（其他字段选填，填得越细越准）
+5. 点"生成分镜脚本"
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 本地开发
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev      # 开发模式
+npm run build    # 构建生产包到 dist/
+npm run preview  # 预览生产构建
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 部署
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+推到 `main` 分支会自动触发 GitHub Actions 部署到 GitHub Pages。仓库 Settings → Pages → Source 需设为 **GitHub Actions**。
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 技术栈
+
+React 19 · TypeScript · Vite · jsPDF · html2canvas · DeepSeek API

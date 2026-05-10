@@ -1,10 +1,13 @@
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import './App.css'
 import { jsPDF } from 'jspdf'
 import html2canvas from 'html2canvas'
 
 const DEEPSEEK_KEY_STORAGE = 'xinjie_deepseek_key'
 const HISTORY_STORAGE = 'xinjie_script_history'
+const DRAFT_STORAGE = 'xinjie_draft_v1'
+
+const DEEPSEEK_ENDPOINT = 'https://api.deepseek.com/v1/chat/completions'
 
 interface Shot {
   duration: string
@@ -33,31 +36,84 @@ interface Script {
   keyMessage: string
   requiredShots: string
   extraNotes: string
+  contentType: string
+  targetDuration: string
   totalDuration: string
   bgm: string
   shootLocation: string
   shots: Shot[]
   directorNotes: string
   createdAt: string
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
 }
 
 type EditMode = {
-  type: 'meta' | 'shot'
+  type: 'meta' | 'shot' | 'directorNotes'
   index?: number
   field?: string
 }
 
+interface Draft {
+  destination: string
+  purpose: string
+  departure: string
+  transport: string
+  transportDuration: string
+  shootTime: string
+  weather: string
+  arriveShoot: string
+  hotelName: string
+  howToHotel: string
+  hotelShoot: string
+  companions: string
+  equipment: string
+  keyMessage: string
+  requiredShots: string
+  extraNotes: string
+  contentType: string
+  targetDuration: string
+}
+
+const EMPTY_DRAFT: Draft = {
+  destination: '', purpose: '', departure: '', transport: '', transportDuration: '',
+  shootTime: '', weather: '', arriveShoot: '', hotelName: '', howToHotel: '',
+  hotelShoot: '', companions: '', equipment: '', keyMessage: '', requiredShots: '',
+  extraNotes: '', contentType: '', targetDuration: '',
+}
+
+const CONTENT_TYPES: { key: string; label: string; emoji: string; hint: string }[] = [
+  { key: '冲动行动型', label: '冲动行动', emoji: '💥', hint: '做疯狂决定→说走就走→遇到意外→结尾情感升华' },
+  { key: '对比发现型', label: '对比发现', emoji: '🔍', hint: '台湾视角看大陆事物→发现差异→被震撼→结尾互动' },
+  { key: '情感走心型', label: '情感走心', emoji: '💗', hint: '具体经历→真情实感→两岸情怀→温暖结尾' },
+  { key: '体验分享型', label: '体验分享', emoji: '🌟', hint: '亲身尝试→具体感受→推荐理由→种草结尾' },
+]
+
+const DURATION_PRESETS = ['28秒', '45秒', '60秒']
+
 function getStoredKey(): string {
-  return localStorage.getItem(DEEPSEEK_KEY_STORAGE) || ''
+  try { return localStorage.getItem(DEEPSEEK_KEY_STORAGE) || '' } catch { return '' }
 }
 function saveKey(key: string) {
-  localStorage.setItem(DEEPSEEK_KEY_STORAGE, key)
+  try { localStorage.setItem(DEEPSEEK_KEY_STORAGE, key) } catch { /* ignore */ }
 }
 function getHistory(): Script[] {
   try { return JSON.parse(localStorage.getItem(HISTORY_STORAGE) || '[]') } catch { return [] }
 }
 function saveHistory(scripts: Script[]) {
-  localStorage.setItem(HISTORY_STORAGE, JSON.stringify(scripts.slice(0, 20)))
+  try { localStorage.setItem(HISTORY_STORAGE, JSON.stringify(scripts.slice(0, 20))) } catch { /* ignore */ }
+}
+function getDraft(): Draft {
+  try {
+    const raw = localStorage.getItem(DRAFT_STORAGE)
+    if (!raw) return EMPTY_DRAFT
+    return { ...EMPTY_DRAFT, ...JSON.parse(raw) }
+  } catch { return EMPTY_DRAFT }
+}
+function saveDraft(d: Draft) {
+  try { localStorage.setItem(DRAFT_STORAGE, JSON.stringify(d)) } catch { /* ignore */ }
+}
+function clearDraft() {
+  try { localStorage.removeItem(DRAFT_STORAGE) } catch { /* ignore */ }
 }
 
 const SYSTEM_PROMPT = `你是昕昕，一个在大陆生活的台湾女生，你要以她的语气和风格写抖音视频分镜脚本。
@@ -114,6 +170,7 @@ const SYSTEM_PROMPT = `你是昕昕，一个在大陆生活的台湾女生，你
 - 全片时长控制在28-60秒内
 - 表格每行是一个镜头，不要合并多个镜头
 - 严格按照用户提供的拍摄信息来写，不自己瞎编
+- 表格输出结束后，另起一行以"导演注意事项："开头，写 2-4 条整体建议
 `
 
 const DEST_MAX = 100
@@ -125,12 +182,175 @@ function CounterHint({ value, max }: { value: string; max: number }) {
   return <span className={`field-counter ${cls}`}>{len}/{max}</span>
 }
 
+// ——————————— 解析 ———————————
+
+function parseShots(text: string): Shot[] {
+  const shots: Shot[] = []
+  for (const line of text.split('\n')) {
+    const t = line.trim()
+    if (!t || t.startsWith('总时长') || /^\|\s*时长/.test(t)) continue
+    if (t.startsWith('导演') || t.startsWith('注意') || t.startsWith('摄影师注意')) break
+    if (!t.startsWith('|')) continue
+    // markdown 分隔行 |------|
+    if (/^\|[\s\-|:]+\|$/.test(t)) continue
+    const cells = t.split('|').map(c => c.trim()).slice(1, -1)
+    if (cells.length === 0) continue
+    // 宽容：不足 6 列补空，超过 6 列只取前 6
+    while (cells.length < 6) cells.push('')
+    shots.push({
+      duration: cells[0] || '',
+      timeRange: cells[1] || '',
+      visual: cells[2] || '',
+      voiceover: cells[3] || '',
+      subtitle: cells[4] || '',
+      directorNote: cells[5] || '',
+    })
+  }
+  return shots
+}
+
+function parseMeta(text: string, fallbackLocation: string) {
+  const total = text.match(/总时长[：:]\s*(\d+)\s*秒/)
+  const bgm = text.match(/背景音乐[：:]\s*([^|\n]+)/)
+  const loc = text.match(/拍摄地点[：:]\s*([^|\n]+)/)
+  return {
+    totalDuration: total ? total[1] + ' 秒' : '30 秒',
+    bgm: bgm ? bgm[1].trim() : '全程轻快旅行风纯音乐',
+    shootLocation: loc ? loc[1].trim() : fallbackLocation,
+  }
+}
+
+function parseDirectorNotes(text: string): string {
+  const lines = text.split('\n')
+  const notes: string[] = []
+  let capture = false
+  for (const line of lines) {
+    const t = line.trim()
+    if (t.includes('导演注意事项') || t.includes('摄影师注意事项')) { capture = true; continue }
+    if (!capture) continue
+    if (t.startsWith('|')) continue
+    if (!t) continue
+    notes.push(t.replace(/^[-*·]\s*/, ''))
+  }
+  return notes.join('\n')
+}
+
+// ——————————— 分享链接（URL <-> JSON） ———————————
+
+function encodeShare(script: Script): string {
+  const minimal = {
+    d: script.destination, p: script.purpose, td: script.totalDuration,
+    b: script.bgm, l: script.shootLocation,
+    s: script.shots.map(s => [s.duration, s.timeRange, s.visual, s.voiceover, s.subtitle, s.directorNote]),
+    n: script.directorNotes,
+    ct: script.contentType,
+  }
+  const json = JSON.stringify(minimal)
+  // UTF-8 safe base64
+  const utf8 = new TextEncoder().encode(json)
+  let bin = ''
+  for (const b of utf8) bin += String.fromCharCode(b)
+  const b64 = btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  return b64
+}
+
+function decodeShare(s: string): Script | null {
+  try {
+    const b64 = s.replace(/-/g, '+').replace(/_/g, '/')
+    const pad = b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : ''
+    const bin = atob(b64 + pad)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    const json = new TextDecoder().decode(bytes)
+    const m = JSON.parse(json)
+    if (!m || !Array.isArray(m.s)) return null
+    return {
+      id: Date.now(),
+      destination: m.d || '', purpose: m.p || '',
+      departure: '', transport: '', transportDuration: '', shootTime: '', weather: '',
+      arriveShoot: '', hotelName: '', howToHotel: '', hotelShoot: '',
+      companions: '', equipment: '', keyMessage: '', requiredShots: '', extraNotes: '',
+      contentType: m.ct || '', targetDuration: '',
+      totalDuration: m.td || '30 秒',
+      bgm: m.b || '全程轻快旅行风纯音乐',
+      shootLocation: m.l || m.d || '',
+      shots: (m.s as string[][]).map((a) => ({
+        duration: a[0] || '', timeRange: a[1] || '', visual: a[2] || '',
+        voiceover: a[3] || '', subtitle: a[4] || '', directorNote: a[5] || '',
+      })),
+      directorNotes: m.n || '',
+      createdAt: new Date().toLocaleString('zh-CN'),
+    }
+  } catch { return null }
+}
+
+// ——————————— DeepSeek（流式） ———————————
+
+async function callDeepSeekStream(opts: {
+  key: string
+  messages: Array<{ role: string; content: string }>
+  max_tokens?: number
+  temperature?: number
+  onDelta: (chunk: string) => void
+  signal?: AbortSignal
+}): Promise<{ fullText: string; usage?: Script['usage'] }> {
+  const res = await fetch(DEEPSEEK_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Authorization': `Bearer ${opts.key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'deepseek-chat',
+      messages: opts.messages,
+      max_tokens: opts.max_tokens ?? 2500,
+      temperature: opts.temperature ?? 0.8,
+      stream: true,
+      stream_options: { include_usage: true },
+    }),
+    signal: opts.signal,
+  })
+  if (!res.ok) {
+    let detail = ''
+    try { const j = await res.json(); detail = j.error?.message || '' } catch { /* ignore */ }
+    throw new Error(detail || `API错误 ${res.status}`)
+  }
+  if (!res.body) throw new Error('浏览器不支持流式响应')
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let fullText = ''
+  let usage: Script['usage'] | undefined
+
+  while (true) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let idx: number
+    while ((idx = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, idx).trim()
+      buffer = buffer.slice(idx + 1)
+      if (!line || !line.startsWith('data:')) continue
+      const data = line.slice(5).trim()
+      if (data === '[DONE]') continue
+      try {
+        const j = JSON.parse(data)
+        const delta = j.choices?.[0]?.delta?.content || ''
+        if (delta) { fullText += delta; opts.onDelta(delta) }
+        if (j.usage) usage = j.usage
+      } catch { /* malformed chunk — skip */ }
+    }
+  }
+  return { fullText, usage }
+}
+
+// ——————————— 组件 ———————————
+
 export default function App() {
   const [key, setKey] = useState(getStoredKey)
   const [loading, setLoading] = useState(false)
+  const [streamingText, setStreamingText] = useState('')
   const [result, setResult] = useState<Script | null>(null)
   const [error, setError] = useState('')
-  const [copied, setCopied] = useState(false)
+  const [copied, setCopied] = useState<string>('')
   const [history, setHistory] = useState<Script[]>(getHistory)
   const [showKeyInput, setShowKeyInput] = useState(false)
   const [tempKey, setTempKey] = useState(getStoredKey())
@@ -140,82 +360,69 @@ export default function App() {
   const [formOpen, setFormOpen] = useState(true)
   const [pdfLoading, setPdfLoading] = useState(false)
   const [imgPreview, setImgPreview] = useState<string>('')
+  const [regeneratingIdx, setRegeneratingIdx] = useState<number | null>(null)
   const resultRef = useRef<HTMLDivElement>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const ua = typeof navigator !== 'undefined' ? navigator.userAgent.toLowerCase() : ''
   const isWechat = /micromessenger/.test(ua)
   const isMobile = /iphone|ipad|ipod|android|mobile/.test(ua)
 
-  const [destination, setDestination] = useState('')
-  const [purpose, setPurpose] = useState('')
-  const [departure, setDeparture] = useState('')
-  const [transport, setTransport] = useState('')
-  const [transportDuration, setTransportDuration] = useState('')
-  const [shootTime, setShootTime] = useState('')
-  const [weather, setWeather] = useState('')
-  const [arriveShoot, setArriveShoot] = useState('')
-  const [hotelName, setHotelName] = useState('')
-  const [howToHotel, setHowToHotel] = useState('')
-  const [hotelShoot, setHotelShoot] = useState('')
-  const [companions, setCompanions] = useState('')
-  const [equipment, setEquipment] = useState('')
-  const [keyMessage, setKeyMessage] = useState('')
-  const [requiredShots, setRequiredShots] = useState('')
-  const [extraNotes, setExtraNotes] = useState('')
+  // —— 表单字段（从 draft 恢复） ——
+  const initialDraft = useMemo(getDraft, [])
+  const [destination, setDestination] = useState(initialDraft.destination)
+  const [purpose, setPurpose] = useState(initialDraft.purpose)
+  const [departure, setDeparture] = useState(initialDraft.departure)
+  const [transport, setTransport] = useState(initialDraft.transport)
+  const [transportDuration, setTransportDuration] = useState(initialDraft.transportDuration)
+  const [shootTime, setShootTime] = useState(initialDraft.shootTime)
+  const [weather, setWeather] = useState(initialDraft.weather)
+  const [arriveShoot, setArriveShoot] = useState(initialDraft.arriveShoot)
+  const [hotelName, setHotelName] = useState(initialDraft.hotelName)
+  const [howToHotel, setHowToHotel] = useState(initialDraft.howToHotel)
+  const [hotelShoot, setHotelShoot] = useState(initialDraft.hotelShoot)
+  const [companions, setCompanions] = useState(initialDraft.companions)
+  const [equipment, setEquipment] = useState(initialDraft.equipment)
+  const [keyMessage, setKeyMessage] = useState(initialDraft.keyMessage)
+  const [requiredShots, setRequiredShots] = useState(initialDraft.requiredShots)
+  const [extraNotes, setExtraNotes] = useState(initialDraft.extraNotes)
+  const [contentType, setContentType] = useState(initialDraft.contentType)
+  const [targetDuration, setTargetDuration] = useState(initialDraft.targetDuration)
+
+  const currentDraft = useMemo<Draft>(() => ({
+    destination, purpose, departure, transport, transportDuration, shootTime,
+    weather, arriveShoot, hotelName, howToHotel, hotelShoot, companions,
+    equipment, keyMessage, requiredShots, extraNotes, contentType, targetDuration,
+  }), [destination, purpose, departure, transport, transportDuration, shootTime,
+      weather, arriveShoot, hotelName, howToHotel, hotelShoot, companions,
+      equipment, keyMessage, requiredShots, extraNotes, contentType, targetDuration])
+
+  // 表单改动清错 + debounce 保存草稿
+  useEffect(() => {
+    if (error) setError('')
+    const t = setTimeout(() => saveDraft(currentDraft), 400)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentDraft])
+
+  // 分享链接解析
+  useEffect(() => {
+    const h = window.location.hash
+    const m = /^#share=(.+)$/.exec(h)
+    if (m) {
+      const s = decodeShare(m[1])
+      if (s) {
+        setResult(s)
+        // 清掉 URL 里的 hash，避免刷新重复注入
+        window.history.replaceState(null, '', window.location.pathname + window.location.search)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleSaveKey = () => { saveKey(tempKey); setKey(tempKey); setShowKeyInput(false) }
 
-  const parseShots = (text: string): Shot[] => {
-    const shots: Shot[] = []
-    for (const line of text.split('\n')) {
-      const t = line.trim()
-      if (!t || t.startsWith('总时长') || t.startsWith('| 时长')) continue
-      if (t.startsWith('导演') || t.startsWith('注意')) break
-      if (!t.startsWith('|')) continue
-      const cells = t.split('|').map(c => c.trim()).filter(Boolean)
-      if (cells.length >= 6) shots.push({ duration: cells[0], timeRange: cells[1], visual: cells[2], voiceover: cells[3], subtitle: cells[4], directorNote: cells[5] })
-    }
-    return shots
-  }
-
-  const parseMeta = (text: string) => {
-    const total = text.match(/总时长[：:]\s*(\d+)\s*秒/)
-    const bgm = text.match(/背景音乐[：:]\s*([^|]+)/)
-    const loc = text.match(/拍摄地点[：:]\s*([^|]+)/)
-    return {
-      totalDuration: total ? total[1] + ' 秒' : '30 秒',
-      bgm: bgm ? bgm[1].trim() : '全程轻快旅行风纯音乐',
-      shootLocation: loc ? loc[1].trim() : destination
-    }
-  }
-
-  const parseDirectorNotes = (text: string) => {
-    const lines = text.split('\n')
-    const notes: string[] = []
-    let capture = false
-    for (const line of lines) {
-      if (line.includes('导演注意事项') || line.includes('摄影师注意事项')) { capture = true; continue }
-      if (capture && line.trim().startsWith('|')) continue
-      if (capture && line.trim() && !line.trim().startsWith('-') && !line.match(/^\d/)) {
-        if (notes.length > 0 || line.trim()) notes.push(line.trim())
-      }
-    }
-    return notes.join('\n')
-  }
-
-  const generateScript = useCallback(async () => {
-    if (!key) { setShowKeyInput(true); return }
-    if (!destination.trim()) { setError('请填写目的地'); return }
-    if (!purpose.trim()) { setError('请填写去干什么'); return }
-    if (destination.length > DEST_MAX) { setError(`目的地不能超过${DEST_MAX}字`); return }
-    if (purpose.length > PURPOSE_MAX) { setError(`去干什么不能超过${PURPOSE_MAX}字`); return }
-
-    setLoading(true)
-    setError('')
-    setResult(null)
-    setRawText('')
-
-    const userPrompt = `帮我写一条关于「${destination}」的抖音视频分镜脚本。
+  const buildUserPrompt = () => `帮我写一条关于「${destination}」的抖音视频分镜脚本。
 
 ## 拍摄信息
 - 目的地：${destination}
@@ -232,66 +439,140 @@ export default function App() {
 - 同行人：${companions || '假设一个人'}
 - 拍摄设备：${equipment || '手机拍摄'}
 - 视频重点：${keyMessage || '体验感/被震撼/冲动决定（由你判断最合适的）'}
+- 内容类型：${contentType || '由你根据拍摄信息判断最合适的'}
+- 目标时长：${targetDuration || '由你判断，28-60 秒内'}
 - 必须要有的镜头：${requiredShots || '无特别要求'}
 - 额外补充：${extraNotes || '无'}
 
-严格按照上述信息来写，不要自己瞎编乱造。`
+严格按照上述信息来写，不要自己瞎编乱造。${targetDuration ? `全片总时长严格控制在 ${targetDuration} 左右。` : ''}`
+
+  const generateScript = useCallback(async () => {
+    if (!key) { setShowKeyInput(true); return }
+    if (!destination.trim()) { setError('请填写目的地'); return }
+    if (!purpose.trim()) { setError('请填写去干什么'); return }
+    if (destination.length > DEST_MAX) { setError(`目的地不能超过${DEST_MAX}字`); return }
+    if (purpose.length > PURPOSE_MAX) { setError(`去干什么不能超过${PURPOSE_MAX}字`); return }
+
+    setLoading(true)
+    setError('')
+    setResult(null)
+    setRawText('')
+    setStreamingText('')
+
+    const messages = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'user', content: buildUserPrompt() },
+    ]
+
+    const run = async () => {
+      const ctl = new AbortController()
+      abortRef.current = ctl
+      return callDeepSeekStream({
+        key, messages, signal: ctl.signal,
+        onDelta: (chunk) => setStreamingText(prev => prev + chunk),
+      })
+    }
+
+    let fullText = ''
+    let usage: Script['usage']
+    try {
+      const r = await run()
+      fullText = r.fullText
+      usage = r.usage
+    } catch (err: any) {
+      // 网络/偶发错误：自动重试一次
+      const msg = String(err?.message || err)
+      const retriable = err?.name === 'AbortError' ? false
+        : /429|rate|5\d\d|fetch|network|timeout/i.test(msg)
+      if (retriable) {
+        setStreamingText('')
+        try {
+          const r = await run()
+          fullText = r.fullText
+          usage = r.usage
+        } catch (err2: any) {
+          finalizeError(err2)
+          return
+        }
+      } else {
+        finalizeError(err)
+        return
+      }
+    }
 
     try {
-      const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'deepseek-chat',
-          messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: userPrompt }],
-          max_tokens: 1500, temperature: 0.8
-        })
-      })
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error?.message || `API错误 ${res.status}`)
+      if (!fullText.includes('|')) throw new Error('生成格式不对，请重试')
+      const meta = parseMeta(fullText, destination)
+      const shots = parseShots(fullText)
+      if (shots.length === 0) {
+        setRawText(fullText)
+        throw new Error('未能解析出镜头，已显示原始输出')
       }
-      const data = await res.json()
-      const text = data.choices?.[0]?.message?.content || ''
-      if (!text.includes('|')) throw new Error('生成格式不对，请重试')
-
-      setRawText(text)
-      const meta = parseMeta(text)
-      const shots = parseShots(text)
-      if (shots.length === 0) throw new Error('未能解析出镜头，请重试')
-
       const script: Script = {
-        id: Date.now(), destination: destination.trim(), purpose: purpose.trim(), departure: departure.trim(),
-        transport: transport.trim(), transportDuration: transportDuration.trim(), shootTime: shootTime.trim(),
-        weather: weather.trim(), arriveShoot: arriveShoot.trim(), hotelName: hotelName.trim(),
-        howToHotel: howToHotel.trim(), hotelShoot: hotelShoot.trim(), companions: companions.trim(),
-        equipment: equipment.trim(), keyMessage: keyMessage.trim(), requiredShots: requiredShots.trim(),
-        extraNotes: extraNotes.trim(), ...meta, shots, directorNotes: parseDirectorNotes(text),
-        createdAt: new Date().toLocaleString('zh-CN')
+        id: Date.now(),
+        destination: destination.trim(), purpose: purpose.trim(), departure: departure.trim(),
+        transport: transport.trim(), transportDuration: transportDuration.trim(),
+        shootTime: shootTime.trim(), weather: weather.trim(), arriveShoot: arriveShoot.trim(),
+        hotelName: hotelName.trim(), howToHotel: howToHotel.trim(), hotelShoot: hotelShoot.trim(),
+        companions: companions.trim(), equipment: equipment.trim(), keyMessage: keyMessage.trim(),
+        requiredShots: requiredShots.trim(), extraNotes: extraNotes.trim(),
+        contentType, targetDuration,
+        ...meta, shots, directorNotes: parseDirectorNotes(fullText),
+        createdAt: new Date().toLocaleString('zh-CN'),
+        usage,
       }
       setResult(script)
+      setStreamingText('')
       const newHistory = [script, ...history].slice(0, 20)
       setHistory(newHistory)
       saveHistory(newHistory)
     } catch (err: any) {
-      const msg = err.message || ''
-      if (msg.includes('401') || msg.includes('Unauthorized')) {
-        setError('API Key 无效，请检查')
-      } else if (msg.includes('429') || msg.includes('rate')) {
-        setError('请求过于频繁，请稍后再试')
-      } else if (msg.includes('网络') || msg.includes('fetch')) {
-        setError('网络连接失败，请检查网络')
-      } else {
-        setError(msg || '生成失败，请重试')
-      }
+      finalizeError(err)
     } finally {
       setLoading(false)
+      abortRef.current = null
     }
-  }, [key, destination, purpose, departure, transport, transportDuration, shootTime, weather, arriveShoot, hotelName, howToHotel, hotelShoot, companions, equipment, keyMessage, requiredShots, extraNotes])
 
+    function finalizeError(err: any) {
+      const msg = err?.message || ''
+      if (err?.name === 'AbortError') { setError('已取消'); return }
+      if (/401|Unauthorized/.test(msg)) setError('API Key 无效，请检查')
+      else if (/429|rate/i.test(msg)) setError('请求过于频繁，请稍后再试')
+      else if (/fetch|network|网络/i.test(msg)) setError('网络连接失败，请检查网络')
+      else setError(msg || '生成失败，请重试')
+      setLoading(false)
+    }
+  }, [key, destination, purpose, departure, transport, transportDuration, shootTime, weather, arriveShoot, hotelName, howToHotel, hotelShoot, companions, equipment, keyMessage, requiredShots, extraNotes, contentType, targetDuration, history])
+
+  const cancelGenerate = () => { abortRef.current?.abort() }
+
+  // —— 镜头增删排序 ——
   const updateShot = (i: number, field: keyof Shot, val: string) => {
     if (!result) return
     const updated = { ...result, shots: result.shots.map((s, j) => j === i ? { ...s, [field]: val } : s) }
+    persistScript(updated)
+  }
+  const insertShotAfter = (i: number) => {
+    if (!result) return
+    const blank: Shot = { duration: '3秒', timeRange: '', visual: '', voiceover: '', subtitle: '', directorNote: '' }
+    const next = [...result.shots.slice(0, i + 1), blank, ...result.shots.slice(i + 1)]
+    persistScript({ ...result, shots: next })
+  }
+  const deleteShot = (i: number) => {
+    if (!result) return
+    if (result.shots.length <= 1) return
+    persistScript({ ...result, shots: result.shots.filter((_, j) => j !== i) })
+  }
+  const moveShot = (i: number, dir: -1 | 1) => {
+    if (!result) return
+    const j = i + dir
+    if (j < 0 || j >= result.shots.length) return
+    const next = [...result.shots]
+    ;[next[i], next[j]] = [next[j], next[i]]
+    persistScript({ ...result, shots: next })
+  }
+
+  const persistScript = (updated: Script) => {
     setResult(updated)
     const newHistory = history.map(s => s.id === updated.id ? updated : s)
     saveHistory(newHistory)
@@ -300,13 +581,45 @@ export default function App() {
 
   const updateMeta = (field: string, val: string) => {
     if (!result) return
-    const updated = { ...result, [field]: val }
-    setResult(updated)
-    const newHistory = history.map(s => s.id === updated.id ? updated : s)
-    saveHistory(newHistory)
-    setHistory(newHistory)
+    persistScript({ ...result, [field]: val } as Script)
   }
 
+  // —— 单镜头重生 ——
+  const regenerateShot = async (i: number) => {
+    if (!result || !key) { if (!key) setShowKeyInput(true); return }
+    setRegeneratingIdx(i)
+    setError('')
+    try {
+      const ctx = result.shots.map((s, j) =>
+        `${j === i ? '【需要重写】' : ''}镜头${j + 1}：${s.timeRange} | 画面：${s.visual} | 口播：${s.voiceover} | 字幕：${s.subtitle} | 指令：${s.directorNote}`
+      ).join('\n')
+      const prompt = `以下是「${result.destination}」的分镜脚本，请只重写【需要重写】那一个镜头，保持与前后镜头的衔接。
+
+${ctx}
+
+只输出一行 markdown 表格（| 时长 | 时间段 | 画面内容 | 口播台词 | 字幕贴纸 | 摄影师跟拍指令 |），不要任何其他文字。`
+      const ctl = new AbortController()
+      abortRef.current = ctl
+      const { fullText } = await callDeepSeekStream({
+        key,
+        messages: [{ role: 'system', content: SYSTEM_PROMPT }, { role: 'user', content: prompt }],
+        max_tokens: 400, temperature: 0.85, signal: ctl.signal,
+        onDelta: () => { /* ignore partial for single shot */ },
+      })
+      const shots = parseShots(fullText)
+      if (shots.length === 0) throw new Error('重写失败，请重试')
+      const next = [...result.shots]
+      next[i] = shots[0]
+      persistScript({ ...result, shots: next })
+    } catch (err: any) {
+      setError(err?.message || '单镜头重写失败')
+    } finally {
+      setRegeneratingIdx(null)
+      abortRef.current = null
+    }
+  }
+
+  // —— 导出 ——
   const renderToCanvas = async () => {
     if (!result || !resultRef.current) return null
     const node = resultRef.current
@@ -333,37 +646,23 @@ export default function App() {
       const canvas = await renderToCanvas()
       if (!canvas) return
       const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
-      // 微信内置浏览器拦截 download，改为预览模式让用户长按保存
-      if (isWechat) {
-        setImgPreview(dataUrl)
-        return
-      }
+      if (isWechat) { setImgPreview(dataUrl); return }
       const link = document.createElement('a')
       link.href = dataUrl
       link.download = `昕昕分镜_${result.destination}.jpg`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      document.body.appendChild(link); link.click(); document.body.removeChild(link)
     } catch (err: any) {
-      console.error('图片生成失败:', err)
       alert('图片生成失败：' + (err?.message || '未知错误'))
-    } finally {
-      setPdfLoading(false)
-    }
+    } finally { setPdfLoading(false) }
   }
 
   const downloadPDF = async () => {
     if (!result || !resultRef.current) return
-    // 微信里直接下载 PDF 大概率被拦截，改为长图模式
-    if (isWechat) {
-      await downloadImage()
-      return
-    }
+    if (isWechat) { await downloadImage(); return }
     setPdfLoading(true)
     try {
       const canvas = await renderToCanvas()
       if (!canvas) return
-
       const imgData = canvas.toDataURL('image/jpeg', 0.92)
       const pdf = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' })
       const pageWidth = pdf.internal.pageSize.getWidth()
@@ -396,14 +695,12 @@ export default function App() {
         }
       }
 
-      // 移动端浏览器优先用新窗口打开 PDF（dataurl），下载链接经常被拦
       if (isMobile) {
         const dataUrl = pdf.output('dataurlstring')
         const w = window.open()
         if (w) {
           w.document.write(`<title>昕昕分镜_${result.destination}.pdf</title><iframe src="${dataUrl}" frameborder="0" style="border:0;width:100%;height:100vh" allowfullscreen></iframe>`)
         } else {
-          // 弹窗被拦：退化成图片预览
           const dataUrl2 = canvas.toDataURL('image/jpeg', 0.92)
           setImgPreview(dataUrl2)
         }
@@ -415,39 +712,103 @@ export default function App() {
       const link = document.createElement('a')
       link.href = url
       link.download = `昕昕分镜_${result.destination}.pdf`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
+      document.body.appendChild(link); link.click(); document.body.removeChild(link)
       setTimeout(() => URL.revokeObjectURL(url), 1000)
     } catch (err: any) {
-      console.error('PDF生成失败:', err)
       alert('PDF 生成失败：' + (err?.message || '未知错误') + '\n请用「复制全部」或保存长图')
-    } finally {
-      setPdfLoading(false)
-    }
+    } finally { setPdfLoading(false) }
+  }
+
+  const toMarkdown = (s: Script): string => {
+    let text = `# ${s.destination} · ${s.purpose}\n\n`
+    text += `- 总时长：${s.totalDuration}\n- 背景音乐：${s.bgm}\n- 拍摄地点：${s.shootLocation}\n`
+    if (s.contentType) text += `- 内容类型：${s.contentType}\n`
+    text += `\n| # | 时长 | 时间段 | 画面内容 | 口播台词（同步播报） | 字幕贴纸 | 摄影师跟拍指令 |\n`
+    text += `|---|------|--------|----------|----------------------|----------|----------------|\n`
+    s.shots.forEach((shot, i) => {
+      const esc = (v: string) => v.replace(/\|/g, '\\|').replace(/\n/g, ' ')
+      text += `| ${i + 1} | ${esc(shot.duration)} | ${esc(shot.timeRange)} | ${esc(shot.visual)} | ${esc(shot.voiceover)} | ${esc(shot.subtitle)} | ${esc(shot.directorNote)} |\n`
+    })
+    if (s.directorNotes) text += `\n## 导演注意事项\n\n${s.directorNotes}\n`
+    return text
   }
 
   const copyAll = () => {
     if (!result) return
-    let text = `总时长：${result.totalDuration} | 背景音乐：${result.bgm} | 拍摄地点：${result.shootLocation}\n\n`
-    text += '| 时长 | 时间段 | 画面内容 | 口播台词（同步播报） | 字幕贴纸 | 摄影师跟拍指令 |\n'
-    text += '|------|--------|----------|---------------------|----------|---------------|\n'
-    for (const shot of result.shots) text += `| ${shot.duration} | ${shot.timeRange} | ${shot.visual} | ${shot.voiceover} | ${shot.subtitle} | ${shot.directorNote} |\n`
-    if (result.directorNotes) text += `\n导演注意事项：\n${result.directorNotes}`
-    navigator.clipboard.writeText(text).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+    navigator.clipboard.writeText(toMarkdown(result)).then(() => flashCopied('all'))
   }
 
+  const copyShot = (i: number) => {
+    if (!result) return
+    const s = result.shots[i]
+    const text = `镜头${i + 1}（${s.duration}，${s.timeRange}）
+画面：${s.visual}
+口播：${s.voiceover}
+字幕：${s.subtitle}
+指令：${s.directorNote}`
+    navigator.clipboard.writeText(text).then(() => flashCopied('shot-' + i))
+  }
+
+  const downloadMarkdown = () => {
+    if (!result) return
+    const md = toMarkdown(result)
+    const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `昕昕分镜_${result.destination}.md`
+    document.body.appendChild(a); a.click(); document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+
+  const shareLink = () => {
+    if (!result) return
+    const hash = encodeShare(result)
+    const url = `${window.location.origin}${window.location.pathname}#share=${hash}`
+    navigator.clipboard.writeText(url).then(() => flashCopied('share'))
+  }
+
+  const flashCopied = (key: string) => {
+    setCopied(key)
+    setTimeout(() => setCopied(''), 2000)
+  }
+
+  // —— 克隆脚本到表单 ——
+  const cloneToForm = (s: Script) => {
+    setDestination(s.destination); setPurpose(s.purpose)
+    setDeparture(s.departure); setTransport(s.transport); setTransportDuration(s.transportDuration)
+    setShootTime(s.shootTime); setWeather(s.weather); setArriveShoot(s.arriveShoot)
+    setHotelName(s.hotelName); setHowToHotel(s.howToHotel); setHotelShoot(s.hotelShoot)
+    setCompanions(s.companions); setEquipment(s.equipment); setKeyMessage(s.keyMessage)
+    setRequiredShots(s.requiredShots); setExtraNotes(s.extraNotes)
+    setContentType(s.contentType || ''); setTargetDuration(s.targetDuration || '')
+    setResult(null); setRawText(''); setFormOpen(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const resetForm = () => {
+    setDestination(''); setPurpose(''); setDeparture(''); setTransport(''); setTransportDuration('')
+    setShootTime(''); setWeather(''); setArriveShoot(''); setHotelName(''); setHowToHotel('')
+    setHotelShoot(''); setCompanions(''); setEquipment(''); setKeyMessage(''); setRequiredShots('')
+    setExtraNotes(''); setContentType(''); setTargetDuration('')
+    clearDraft()
+  }
+
+  // —— 编辑辅助 ——
   const isMetaEditing = (f: string) => editMode?.type === 'meta' && editMode?.field === f
   const isShotEditing = (i: number, f: string) => editMode?.type === 'shot' && editMode?.index === i && editMode?.field === f
+  const isNotesEditing = () => editMode?.type === 'directorNotes'
 
   const startMetaEdit = (f: string) => { if (!result) return; setEditMode({ type: 'meta', field: f }); setEditValue((result as any)[f]) }
   const startShotEdit = (i: number, f: keyof Shot) => { if (!result) return; setEditMode({ type: 'shot', index: i, field: f }); setEditValue(result.shots[i][f]) }
+  const startNotesEdit = () => { if (!result) return; setEditMode({ type: 'directorNotes' }); setEditValue(result.directorNotes) }
+
   const saveEdit = () => {
     if (!editMode) return
     if (editMode.type === 'meta') updateMeta(editMode.field!, editValue)
     else if (editMode.type === 'shot' && editMode.index !== undefined) updateShot(editMode.index, editMode.field as keyof Shot, editValue)
-    setEditMode(null)
-    setEditValue('')
+    else if (editMode.type === 'directorNotes') updateMeta('directorNotes', editValue)
+    setEditMode(null); setEditValue('')
   }
 
   return (
@@ -455,7 +816,7 @@ export default function App() {
       <header className="header">
         <span className="badge"><span className="dot"></span>昕昕 · 抖音分镜脚本生成器</span>
         <h1>🎬 一句话生成爆款分镜</h1>
-        <p className="subtitle">填真实拍摄信息 → AI 一键产出可拍摄的分镜表 · 支持导出 PDF</p>
+        <p className="subtitle">填真实拍摄信息 → AI 一键产出可拍摄的分镜表 · 流式生成 · 支持 PDF / 长图 / Markdown</p>
         <div className="header-actions">
           {!key && <button className="key-btn" onClick={() => setShowKeyInput(true)}>🔑 设置 API Key</button>}
           {key && <button className="key-btn small set" onClick={() => setShowKeyInput(true)}>Key 已配置 · 更换</button>}
@@ -535,7 +896,6 @@ export default function App() {
                       <option value="相机">相机</option>
                       <option value="手机+稳定器">手机+稳定器</option>
                       <option value="相机+摄影师">相机+摄影师</option>
-                      <option value="有航拍">有航拍</option>
                     </select>
                   </div>
                 </div>
@@ -613,62 +973,120 @@ export default function App() {
                 <div className="form-section-title">
                   <span className="icon">🎬</span>创作要点<span className="desc">决定爆款方向</span>
                 </div>
+
+                <div className="form-row chip-row">
+                  <label className="chip-label">内容类型</label>
+                  <div className="chips">
+                    {CONTENT_TYPES.map(t => (
+                      <button
+                        type="button"
+                        key={t.key}
+                        className={`chip ${contentType === t.key ? 'active' : ''}`}
+                        onClick={() => setContentType(contentType === t.key ? '' : t.key)}
+                        title={t.hint}
+                      >
+                        <span className="chip-emoji">{t.emoji}</span>{t.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="form-row chip-row">
+                  <label className="chip-label">目标时长</label>
+                  <div className="chips">
+                    {DURATION_PRESETS.map(d => (
+                      <button
+                        type="button"
+                        key={d}
+                        className={`chip ${targetDuration === d ? 'active' : ''}`}
+                        onClick={() => setTargetDuration(targetDuration === d ? '' : d)}
+                      >{d}</button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="form-row">
                   <div className="form-field">
                     <label>视频重点</label>
                     <select value={keyMessage} onChange={e => setKeyMessage(e.target.value)} className="form-select">
-                      <option value="">选择重点</option>
-                      <option value="惊喜发现">惊喜发现</option>
-                      <option value="被震撼的感受">被震撼的感受</option>
+                      <option value="">由 AI 判断</option>
+                      <option value="体验感">体验感</option>
+                      <option value="被震撼">被震撼</option>
                       <option value="冲动决定">冲动决定</option>
-                      <option value="两岸差异观察">两岸差异观察</option>
-                      <option value="真实体验分享">真实体验分享</option>
-                      <option value="情感走心">情感走心</option>
+                      <option value="两岸差异">两岸差异</option>
+                      <option value="美食探店">美食探店</option>
+                      <option value="人文情怀">人文情怀</option>
                     </select>
                   </div>
                   <div className="form-field">
-                    <label>到了之后怎么拍</label>
-                    <input type="text" value={arriveShoot} onChange={e => setArriveShoot(e.target.value)} placeholder="比如：先拍展厅外观，再进店拍内饰" />
+                    <label>到达后怎么拍</label>
+                    <input type="text" value={arriveShoot} onChange={e => setArriveShoot(e.target.value)} placeholder="比如：先到标志建筑，再逛市集" />
                   </div>
                 </div>
+
                 <div className="form-row">
                   <div className="form-field full">
-                    <label>必须有的镜头</label>
-                    <input type="text" value={requiredShots} onChange={e => setRequiredShots(e.target.value)} placeholder="比如：一定要有展厅外观、酒店夜景、车内方向盘视角" />
+                    <label>必须要有的镜头</label>
+                    <input type="text" value={requiredShots} onChange={e => setRequiredShots(e.target.value)} placeholder="比如：跟当地人聊天、拍夕阳、拍美食" />
                   </div>
                 </div>
+
                 <div className="form-row">
                   <div className="form-field full">
                     <label>额外补充</label>
-                    <textarea value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder="还有什么特别想拍的、要注意的、或想表达的内容？" rows={2} />
+                    <textarea value={extraNotes} onChange={e => setExtraNotes(e.target.value)} placeholder="任何想告诉 AI 的额外信息" rows={2} />
                   </div>
                 </div>
               </div>
 
+              {error && <div className="error-banner">⚠️ {error}</div>}
+
               <div className="form-footer">
-                {error && <p className="error">⚠️ {error}</p>}
-                {!key && !showKeyInput && !error && <p className="hint">👉 先设置 API Key 再生成</p>}
-                <button className={`generate-btn ${loading ? 'loading' : ''}`} onClick={generateScript} disabled={loading}>
-                  {loading ? <><span className="spinner"></span>AI 创作中...</> : <>✨ 生成分镜脚本</>}
-                </button>
+                <button className="reset-btn" type="button" onClick={resetForm} disabled={loading}>↺ 清空</button>
+                {loading ? (
+                  <button className="generate-btn cancel" type="button" onClick={cancelGenerate}>
+                    ✕ 取消生成
+                  </button>
+                ) : (
+                  <button className="generate-btn" type="button" onClick={generateScript}>
+                    ✨ 生成分镜脚本
+                  </button>
+                )}
               </div>
             </div>
           )}
         </div>
+
+        {/* —— 流式输出预览 —— */}
+        {loading && streamingText && !result && (
+          <div className="streaming-card glass-card">
+            <div className="streaming-header">
+              <span className="pulse-dot"></span>AI 正在生成中…
+            </div>
+            <pre className="streaming-text">{streamingText}</pre>
+          </div>
+        )}
+
+        {loading && !streamingText && (
+          <div className="loading-hint">⏳ 正在连接 DeepSeek…</div>
+        )}
 
         {/* —— 结果 —— */}
         {result && (
           <div className="result-card glass-card" ref={resultRef}>
             <div className="result-header">
               <div className="result-header-left">
-                <button className="action-btn" onClick={() => { setResult(null); setRawText('') }}>← 返回</button>
-                <h2>{result.destination} — {result.purpose}</h2>
+                <h2>🎬 分镜脚本</h2>
+                <span className="result-count">{result.shots.length} 个镜头</span>
               </div>
               <div className="result-actions">
-                <button className="action-btn" onClick={copyAll}>{copied ? '✅ 已复制' : '📋 复制'}</button>
-                <button className="action-btn primary" onClick={downloadPDF} disabled={pdfLoading}>
+                <button className="action-btn" onClick={copyAll}>{copied === 'all' ? '✓ 已复制' : '📋 复制 MD'}</button>
+                <button className="action-btn" onClick={downloadMarkdown}>📝 MD 文件</button>
+                <button className="action-btn" onClick={shareLink}>{copied === 'share' ? '✓ 链接已复制' : '🔗 分享'}</button>
+                <button className="action-btn" disabled={pdfLoading} onClick={isWechat ? downloadImage : downloadPDF}>
                   {pdfLoading ? '⏳ 生成中...' : isWechat ? '🖼 保存长图' : isMobile ? '📄 PDF 预览' : '📄 PDF'}
                 </button>
+                <button className="action-btn" onClick={() => cloneToForm(result)}>📄 克隆</button>
                 <button className="action-btn danger" onClick={() => {
                   const newHistory = history.filter(s => s.id !== result.id)
                   setHistory(newHistory); saveHistory(newHistory); setResult(null); setRawText('')
@@ -685,6 +1103,7 @@ export default function App() {
             <div className="info-summary">
               <span>📍 {result.destination}</span>
               <span>🎯 {result.purpose}</span>
+              {result.contentType && <span>🎭 {result.contentType}</span>}
               {result.hotelName && <span>🏨 {result.hotelName}</span>}
               {result.shootTime && <span>⏰ {result.shootTime}</span>}
               {result.weather && <span>🌤 {result.weather}</span>}
@@ -713,19 +1132,19 @@ export default function App() {
 
             <div className="shots-table">
               <div className="table-header">
-                <span>#</span><span>时长</span><span>时间段</span><span>画面内容</span><span>口播台词</span><span>字幕</span><span>摄影师指令</span>
+                <span>#</span><span>时长</span><span>时间段</span><span>画面内容</span><span>口播台词</span><span>字幕</span><span>摄影师指令</span><span>操作</span>
               </div>
               {result.shots.map((shot, i) => (
-                <div key={i} className="table-row">
+                <div key={i} className={`table-row ${regeneratingIdx === i ? 'regen' : ''}`}>
                   <div className="cell cell-num cell-sm"><span className="num-badge">{i + 1}</span></div>
                   <div className="cell cell-sm" onClick={() => !editMode && startShotEdit(i, 'duration')}>
                     {isShotEditing(i, 'duration') ? (
-                      <textarea className="cell-input" value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.ctrlKey ? saveEdit() : null)} onBlur={saveEdit} rows={2} autoFocus />
+                      <textarea className="cell-input" value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && e.ctrlKey && saveEdit()} onBlur={saveEdit} rows={2} autoFocus />
                     ) : (<span className="cell-text editable">{shot.duration}</span>)}
                   </div>
                   <div className="cell cell-sm" onClick={() => !editMode && startShotEdit(i, 'timeRange')}>
                     {isShotEditing(i, 'timeRange') ? (
-                      <textarea className="cell-input" value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.ctrlKey ? saveEdit() : null)} onBlur={saveEdit} rows={2} autoFocus />
+                      <textarea className="cell-input" value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && e.ctrlKey && saveEdit()} onBlur={saveEdit} rows={2} autoFocus />
                     ) : (<span className="cell-text editable">{shot.timeRange}</span>)}
                   </div>
                   <div className="cell" onClick={() => !editMode && startShotEdit(i, 'visual')}>
@@ -740,7 +1159,7 @@ export default function App() {
                   </div>
                   <div className="cell cell-sm" onClick={() => !editMode && startShotEdit(i, 'subtitle')}>
                     {isShotEditing(i, 'subtitle') ? (
-                      <textarea className="cell-input" value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && (e.ctrlKey ? saveEdit() : null)} onBlur={saveEdit} rows={2} autoFocus />
+                      <textarea className="cell-input" value={editValue} onChange={e => setEditValue(e.target.value)} onKeyDown={e => e.key === 'Enter' && e.ctrlKey && saveEdit()} onBlur={saveEdit} rows={2} autoFocus />
                     ) : (<span className="cell-text editable">{shot.subtitle}</span>)}
                   </div>
                   <div className="cell" onClick={() => !editMode && startShotEdit(i, 'directorNote')}>
@@ -748,18 +1167,41 @@ export default function App() {
                       <textarea className="cell-input" value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={saveEdit} rows={3} autoFocus />
                     ) : (<span className="cell-text editable">{shot.directorNote}</span>)}
                   </div>
+                  <div className="cell cell-ops">
+                    <button className="op-btn" title="上移" onClick={e => { e.stopPropagation(); moveShot(i, -1) }} disabled={i === 0}>↑</button>
+                    <button className="op-btn" title="下移" onClick={e => { e.stopPropagation(); moveShot(i, 1) }} disabled={i === result.shots.length - 1}>↓</button>
+                    <button className="op-btn" title="在后面插入" onClick={e => { e.stopPropagation(); insertShotAfter(i) }}>＋</button>
+                    <button className="op-btn" title="复制此镜头" onClick={e => { e.stopPropagation(); copyShot(i) }}>{copied === 'shot-' + i ? '✓' : '⧉'}</button>
+                    <button className="op-btn regen-btn" title="AI 重写此镜头" onClick={e => { e.stopPropagation(); regenerateShot(i) }} disabled={regeneratingIdx !== null}>
+                      {regeneratingIdx === i ? '⏳' : '🔁'}
+                    </button>
+                    <button className="op-btn danger" title="删除" onClick={e => { e.stopPropagation(); deleteShot(i) }} disabled={result.shots.length <= 1}>×</button>
+                  </div>
                 </div>
               ))}
+              <div className="table-footer">
+                <button className="add-shot-btn" onClick={() => result.shots.length && insertShotAfter(result.shots.length - 1)}>
+                  ＋ 在末尾加一个镜头
+                </button>
+              </div>
             </div>
 
-            {result.directorNotes && (
-              <div className="director-section">
-                <h3>📋 导演注意事项</h3>
-                <pre className="director-text">{result.directorNotes}</pre>
+            <div className="director-section" onClick={() => !editMode && !isNotesEditing() && startNotesEdit()}>
+              <h3>📋 导演注意事项 <span className="edit-inline-hint">点击编辑</span></h3>
+              {isNotesEditing() ? (
+                <textarea className="director-input" value={editValue} onChange={e => setEditValue(e.target.value)} onBlur={saveEdit} rows={4} autoFocus />
+              ) : (
+                <pre className="director-text">{result.directorNotes || '（暂无，点击添加）'}</pre>
+              )}
+            </div>
+
+            {result.usage && (
+              <div className="usage-hint">
+                📊 本次用量 · 提示 {result.usage.prompt_tokens ?? '-'} tokens · 输出 {result.usage.completion_tokens ?? '-'} tokens · 总计 {result.usage.total_tokens ?? '-'} tokens
               </div>
             )}
 
-            <p className="edit-hint">💡 点击任意单元格即可编辑修改</p>
+            <p className="edit-hint">💡 点击任意单元格编辑 · 右侧按钮可增删、移动、复制或让 AI 重写单个镜头</p>
           </div>
         )}
 
@@ -771,17 +1213,18 @@ export default function App() {
           </div>
         )}
 
-        {history.length > 0 && !result && (
+        {history.length > 0 && !result && !loading && (
           <div className="history-section">
             <h3>📜 历史记录<span className="history-count">{history.length}</span></h3>
             <div className="history-list">
               {history.map(script => (
-                <div key={script.id} className="history-item" onClick={() => { setResult(script); setRawText('') }}>
-                  <div className="history-icon">🎬</div>
-                  <div className="history-text">
+                <div key={script.id} className="history-item">
+                  <div className="history-icon" onClick={() => { setResult(script); setRawText('') }}>🎬</div>
+                  <div className="history-text" onClick={() => { setResult(script); setRawText('') }}>
                     <span className="history-dest">{script.destination} — {script.purpose}</span>
                     <span className="history-date">{script.createdAt}</span>
                   </div>
+                  <button className="history-clone" title="克隆参数到表单" onClick={(e) => { e.stopPropagation(); cloneToForm(script) }}>📄</button>
                 </div>
               ))}
             </div>

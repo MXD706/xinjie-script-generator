@@ -1,0 +1,20 @@
+{
+  "name": "昕昕分镜脚本生成器",
+  "short_name": "昕昕分镜",
+  "description": "填真实拍摄信息 → AI 一键生成可拍摄的抖音分镜表",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0d0a1d",
+  "theme_color": "#0d0a1d",
+  "lang": "zh-CN",
+  "icons": [
+    {
+      "src": "./favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

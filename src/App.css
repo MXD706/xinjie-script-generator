@@ -692,3 +692,277 @@ body::after {
   .empty-state h3 { font-size: 16px; }
   .empty-state p { font-size: 13px; }
 }
+
+/* ============== 新增：焦点样式 ============== */
+:focus-visible {
+  outline: 2px solid var(--primary-2);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+button:focus-visible, .chip:focus-visible, .op-btn:focus-visible { outline-offset: 3px; }
+
+/* ============== 新增：尊重 reduced-motion ============== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============== 新增：Chips（内容类型 / 总时长） ============== */
+.chips {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.chip-row { flex-wrap: wrap; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-2);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.chip:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.chip.active {
+  background: linear-gradient(135deg, rgba(255, 45, 85, 0.2), rgba(255, 107, 138, 0.2));
+  border-color: rgba(255, 107, 138, 0.5);
+  color: #ffb4c6;
+  box-shadow: 0 0 12px rgba(255, 45, 85, 0.2);
+}
+.chip-emoji { font-size: 15px; line-height: 1; }
+.chip-label { font-weight: 500; }
+
+.chip-field-label {
+  display: block;
+  color: var(--text-2);
+  font-size: 12.5px;
+  margin-bottom: 8px;
+}
+
+/* ============== 新增：镜头操作按钮列 ============== */
+.cell-ops {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 6px !important;
+  min-width: 44px;
+}
+.op-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+.op-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.op-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.op-btn.danger:hover {
+  background: rgba(255, 45, 85, 0.15);
+  border-color: rgba(255, 45, 85, 0.4);
+  color: #ff8aa1;
+}
+.op-btn.regen-btn:hover {
+  background: rgba(123, 121, 255, 0.15);
+  border-color: rgba(123, 121, 255, 0.4);
+  color: #a8a6ff;
+}
+.op-btn.regen-btn.loading {
+  background: rgba(123, 121, 255, 0.2);
+  color: #a8a6ff;
+  cursor: wait;
+}
+
+.add-shot-btn {
+  margin: 12px auto 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: rgba(123, 121, 255, 0.1);
+  border: 1px dashed rgba(123, 121, 255, 0.4);
+  color: #a8a6ff;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+.add-shot-btn:hover {
+  background: rgba(123, 121, 255, 0.18);
+  border-color: rgba(123, 121, 255, 0.6);
+  border-style: solid;
+}
+
+.table-footer {
+  display: flex; justify-content: center; margin-top: 8px;
+}
+
+/* ============== 新增：导演备注可编辑 ============== */
+.director-input {
+  width: 100%;
+  min-height: 80px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 10px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.director-input:focus { outline: none; border-color: rgba(255, 107, 138, 0.5); }
+
+/* ============== 新增：错误条 ============== */
+.error-banner {
+  margin: 10px 0;
+  padding: 10px 14px;
+  background: rgba(255, 45, 85, 0.12);
+  border: 1px solid rgba(255, 45, 85, 0.35);
+  color: #ff9db0;
+  border-radius: 10px;
+  font-size: 13px;
+  display: flex; align-items: center; gap: 8px;
+}
+.error-banner .close-x {
+  margin-left: auto; background: none; border: none; color: inherit;
+  cursor: pointer; opacity: 0.7; font-size: 16px; line-height: 1;
+}
+.error-banner .close-x:hover { opacity: 1; }
+
+/* ============== 新增：取消生成按钮 ============== */
+.generate-btn.cancel {
+  background: linear-gradient(135deg, #3a3350, #2a2540);
+}
+
+/* ============== 新增：流式状态卡 ============== */
+.streaming-card { margin-top: 18px; padding: 18px 20px; }
+.streaming-header {
+  display: flex; align-items: center; gap: 10px;
+  color: var(--text-2); font-size: 13px;
+}
+.pulse-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--primary-2);
+  box-shadow: 0 0 8px var(--primary-2);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+.streaming-text {
+  margin-top: 10px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--text-3);
+  white-space: pre-wrap; word-break: break-all;
+  max-height: 180px; overflow-y: auto;
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.loading-hint {
+  display: flex; align-items: center; gap: 6px;
+  color: var(--text-3); font-size: 12px;
+  margin-left: 10px;
+}
+
+/* ============== 新增：结果区 token 用量 ============== */
+.usage-hint {
+  font-size: 11px; color: var(--text-3); margin-left: 8px; font-weight: normal;
+}
+.result-count {
+  font-size: 12px; color: var(--text-2); font-weight: normal; margin-left: 6px;
+}
+
+/* ============== 新增：历史记录"克隆"按钮 ============== */
+.history-item { position: relative; }
+.history-clone {
+  background: rgba(123, 121, 255, 0.12);
+  border: 1px solid rgba(123, 121, 255, 0.35);
+  color: #a8a6ff;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+.history-clone:hover {
+  background: rgba(123, 121, 255, 0.22);
+}
+
+/* ============== 新增：重置表单按钮 ============== */
+.reset-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  padding: 10px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.15s ease;
+}
+.reset-btn:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+/* ============== 新增：内联编辑提示 ============== */
+.edit-inline-hint {
+  color: var(--text-3); font-size: 11px; margin-top: 6px;
+}
+
+/* ============== 新增：分享弹窗 ============== */
+.share-modal textarea {
+  width: 100%;
+  min-height: 90px;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 10px 12px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  word-break: break-all;
+  resize: none;
+  margin: 10px 0;
+}
+.share-modal .share-hint { font-size: 12px; color: var(--text-2); margin-top: 6px; }
+.share-modal .share-actions { display: flex; gap: 10px; margin-top: 14px; }
+
+/* ============== 响应式适配：chip 和操作列 ============== */
+@media (max-width: 600px) {
+  .chip { font-size: 12px; padding: 7px 11px; }
+  .cell-ops { flex-direction: row; flex-wrap: wrap; min-width: 80px; padding: 6px !important; }
+  .op-btn { font-size: 10px; padding: 3px 6px; }
+  .streaming-text { font-size: 10.5px; max-height: 140px; }
+  .history-clone { padding: 4px 8px; font-size: 10.5px; }
+}
+
+/* ============== PDF 导出模式：隐藏操作列 ============== */
+.pdf-export .cell-ops, .pdf-export .add-shot-btn, .pdf-export .table-footer,
+.pdf-export .op-btn { display: none !important; }

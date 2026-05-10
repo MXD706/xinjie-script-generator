@@ -2,31 +2,30 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./assets/favicon-B96YHoQ9.svg" />
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+    <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#0d0a1d" />
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta http-equiv="Expires" content="0" />
-    <meta name="description" content="昕昕抖音分镜脚本生成器 — 填写真实拍摄信息，AI 一键生成可直接拍摄的爆款分镜表，支持导出 PDF 和长图。" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.deepseek.com; worker-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" />
+    <meta name="description" content="昕昕抖音分镜脚本生成器 — 填写真实拍摄信息，AI 一键生成可直接拍摄的爆款分镜表，支持导出 PDF、长图和 Markdown。" />
     <meta name="keywords" content="抖音脚本,分镜脚本,短视频,AI脚本,昕昕,旅行视频,Vlog分镜" />
     <meta name="author" content="MXD706" />
 
     <meta property="og:type" content="website" />
     <meta property="og:title" content="昕昕分镜脚本生成器 — AI 一键生成爆款分镜" />
-    <meta property="og:description" content="填真实拍摄信息 → AI 一键产出可直接拍摄的分镜表 · 支持导出 PDF 和长图" />
-    <meta property="og:image" content="data:image/svg+xml,%3csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3e%3cdefs%3e%3clinearGradient%20id='g1'%20x1='0'%20y1='0'%20x2='64'%20y2='64'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20offset='0'%20stop-color='%23ff2d55'/%3e%3cstop%20offset='0.55'%20stop-color='%23ff6b8a'/%3e%3cstop%20offset='1'%20stop-color='%23ff9f43'/%3e%3c/linearGradient%3e%3clinearGradient%20id='g2'%20x1='0'%20y1='0'%20x2='0'%20y2='64'%20gradientUnits='userSpaceOnUse'%3e%3cstop%20offset='0'%20stop-color='%23fff'%20stop-opacity='0.25'/%3e%3cstop%20offset='1'%20stop-color='%23fff'%20stop-opacity='0'/%3e%3c/linearGradient%3e%3c/defs%3e%3crect%20x='2'%20y='2'%20width='60'%20height='60'%20rx='14'%20fill='url(%23g1)'/%3e%3crect%20x='2'%20y='2'%20width='60'%20height='60'%20rx='14'%20fill='url(%23g2)'/%3e%3c!--%20胶片夹板顶部%20--%3e%3cpath%20d='M10%2018%20L54%2018%20L50%2026%20L14%2026%20Z'%20fill='rgba(255,255,255,0.18)'/%3e%3cpath%20d='M14%2018%20L18%2026%20M22%2018%20L26%2026%20M30%2018%20L34%2026%20M38%2018%20L42%2026%20M46%2018%20L50%2026'%20stroke='%23fff'%20stroke-width='1.6'%20stroke-linecap='round'/%3e%3c!--%20中间的%20X%20(昕昕的%20X)%20--%3e%3cpath%20d='M22%2036%20L42%2056%20M42%2036%20L22%2056'%20stroke='%23fff'%20stroke-width='4.5'%20stroke-linecap='round'/%3e%3c/svg%3e" />
+    <meta property="og:description" content="填真实拍摄信息 → AI 一键产出可直接拍摄的分镜表 · 支持导出 PDF、长图和 Markdown" />
 
     <meta name="twitter:card" content="summary" />
     <meta name="twitter:title" content="昕昕分镜脚本生成器" />
     <meta name="twitter:description" content="填真实拍摄信息 → AI 一键生成可拍摄的分镜表" />
 
     <title>昕昕分镜脚本生成器 · AI 一键生成爆款分镜</title>
-    <script type="module" crossorigin src="./assets/index-Cs38VY89.js"></script>
-    <link rel="modulepreload" crossorigin href="./assets/chunk-CaILmz35.js">
-    <link rel="stylesheet" crossorigin href="./assets/index-iZHTGC-2.css">
   </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
