@@ -4,7 +4,7 @@
  *   - assets (js/css/svg/fonts): cache-first
  *   - DeepSeek API: never cache (pass-through)
  */
-const CACHE = 'xinjie-v1';
+const CACHE = 'xinjie-v2';
 const SHELL = ['./', './favicon.svg', './manifest.webmanifest'];
 
 self.addEventListener('install', (e) => {
